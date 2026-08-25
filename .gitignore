@@ -33,3 +33,8 @@ terraform.rc
 
 # Ignored documents
 PRD (3).md
+
+# Ignore SSH keys stored in project folder
+ssh-keys/
+*.pem
+*.pub
