@@ -23,7 +23,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-}
+} 
 
 variable "root_volume_size" {
   description = "Root EBS volume size in GB"
