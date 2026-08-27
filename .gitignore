@@ -38,3 +38,6 @@ PRD (3).md
 ssh-keys/
 *.pem
 *.pub
+
+# Ignore static Ansible inventory (contains real server IPs)
+ansible/inventory/hosts.ini
