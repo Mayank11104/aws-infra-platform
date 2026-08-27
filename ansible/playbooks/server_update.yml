@@ -1,0 +1,22 @@
+---
+
+
+- name: Server Initialisation and Update
+  hosts: all
+  become: yes  
+
+  tasks:
+    - name: Update apt cache and upgrade all packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install basic troubleshooting utilities
+      apt:
+        name:
+          - curl
+          - git
+          - vim
+          - htop
+        state: present
