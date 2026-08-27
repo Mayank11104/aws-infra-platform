@@ -159,15 +159,6 @@ private_key_file = ../ssh-keys/aws-infra-key
 host_key_checking = False
 ```
 
-#### Roles (Configuration Management)
-
-Three roles are defined under `ansible/roles/`, each with a dedicated `tasks/main.yml`:
-
-| Role | What it does |
-|---|---|
-| `common` | Updates apt cache, installs `curl`, `vim`, `git`, `htop`, `unzip` |
-| `nginx` | Installs Nginx, ensures service is started and enabled on boot |
-| `docker` | Adds Docker GPG key + repo, installs Docker CE, adds `ubuntu` user to `docker` group |
 
 #### Ad-hoc Commands Verified ✅
 
@@ -182,7 +173,7 @@ ansible env_dev -m ping      # Targeted single environment ping
 
 ## 🚀 Roadmap
 
-- [ ] Run `ansible-playbook site.yml` to apply `common`, `nginx`, and `docker` roles to all servers
+- [ ] Create Ansible playbooks and roles for configuration management (Nginx, Docker)
 - [ ] Jenkins CI/CD Pipeline — Terraform lint → plan → security scan → apply (with manual approval for prod)
 - [ ] Integrate `checkov` and `ansible-lint` as hard security gates in the pipeline
 - [ ] Expand VPC module to support 2 AZs and wire in the ALB module
