@@ -173,7 +173,7 @@ ansible env_dev -m ping      # Targeted single environment ping
 
 ## 🚀 Roadmap
 
-- [ ] Create Ansible playbooks and roles for configuration management (Nginx, Docker)
+- [x] Create Ansible playbooks and roles for configuration management (Nginx, Docker)
 - [ ] Jenkins CI/CD Pipeline — Terraform lint → plan → security scan → apply (with manual approval for prod)
 - [ ] Integrate `checkov` and `ansible-lint` as hard security gates in the pipeline
 - [ ] Expand VPC module to support 2 AZs and wire in the ALB module
