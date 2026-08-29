@@ -25,14 +25,15 @@ Ansible+terraform/
 │
 ├── ansible/
 │   ├── inventory/
-│   │   ├── hosts.ini                # Static inventory (grouped by environment)
+│   │   ├── hosts.ini                # Static inventory (grouped by environment, git-ignored)
 │   │   └── aws_ec2.yml              # Dynamic inventory plugin config (future)
 │   ├── roles/
-│   │   ├── common/                  # Base utilities (curl, vim, git, htop)
-│   │   ├── nginx/                   # Web server install + service
-│   │   └── docker/                  # Docker CE install + group config
-│   ├── site.yml                     # Main playbook entry point
-│   └── ansible.cfg                  # Default user, key, inventory path
+│   │   ├── docker/                  # Docker CE install + group config
+│   │   └── nginx/                   # Web server install + service
+│   ├── playbooks/
+│   │   ├── server_update.yml        # Flat playbook — apt update + base packages
+│   │   └── install_services.yml     # Role-based playbook — Docker + Nginx
+│   └── ansible.cfg                  # Default user, key, inventory + roles path
 │
 ├── ssh-keys/                        # SSH keys (git-ignored — never committed)
 ├── .gitignore
@@ -119,13 +120,13 @@ After restarting WSL, running `chmod 400 ssh-keys/aws-infra-key` set the correct
 
 ---
 
-### Phase 5 — Ansible: Inventory + Roles
+### Phase 5 — Ansible: From Ad-hoc to Roles
 
-With the infrastructure fully provisioned by Terraform, Ansible takes over for configuration management.
+With the infrastructure fully provisioned by Terraform, Ansible takes over for configuration management. The entire Ansible journey is documented here — from the very first ping to fully automated role-based deployments.
 
-#### Inventory
+#### Step 1: Inventory Setup
 
-A static inventory (`inventory/hosts.ini`) organises the three environments into named groups:
+We started by configuring a static inventory (`inventory/hosts.ini`) that organises all three environments into named groups:
 
 ```ini
 [env_dev]
@@ -143,31 +144,209 @@ env_staging
 env_prod
 ```
 
-This grouping allows you to target specific environments with ad-hoc commands:
-```bash
-ansible env_dev -m ping       # Ping only dev
-ansible env_prod -m command -a "uptime"   # Check prod uptime
-ansible all -m ping           # Ping all three environments
-```
+The `[role_web:children]` group is a **"Group of Groups"** — a parent group that automatically inherits all the IPs from the child groups. This means if any IP changes, it only needs to be updated in one place.
 
-The `ansible.cfg` file configures the default settings globally so you don't need to pass flags on every command:
+The `ansible.cfg` file was configured so Ansible always uses the project-local inventory, not the system-wide `/etc/ansible/hosts`:
+
 ```ini
 [defaults]
-inventory = inventory/hosts.ini
+inventory  = inventory/hosts.ini
 remote_user = ubuntu
 private_key_file = ../ssh-keys/aws-infra-key
 host_key_checking = False
+roles_path = roles
 ```
 
+> **Why a project-local inventory instead of `/etc/ansible/hosts`?**
+> The default system file cannot be committed to Git and shared with teammates. Storing the inventory inside the project folder means anyone who clones the repository gets a fully working Ansible setup immediately.
 
-#### Ad-hoc Commands Verified ✅
+> **Why `roles_path = roles`?**
+> When playbooks live inside a `playbooks/` subfolder, Ansible looks for roles relative to that playbook's location (i.e., `playbooks/roles/`). Setting `roles_path = roles` in `ansible.cfg` tells Ansible to always look in the top-level `ansible/roles/` folder, regardless of where the playbook file lives.
 
-The following ad-hoc commands were run and all three servers (dev, staging, prod) returned successful responses:
+#### Step 2: Ad-hoc Commands (Learning and Verification)
+
+Before writing any playbooks, ad-hoc commands were used to verify connectivity and understand how Ansible modules work directly from the terminal:
 
 ```bash
-ansible all -m ping          # All three returned "pong"
-ansible env_dev -m ping      # Targeted single environment ping
+ansible all -m ping           # Verified SSH connectivity to all 3 servers
+ansible env_dev -m ping       # Targeted a single environment
+ansible all -m command -a "uptime"   # Checked server uptime
 ```
+
+All three environments (dev, staging, prod) returned `pong` successfully.
+
+---
+
+#### Step 3: First Playbook — Flat Structure
+
+The first playbook was written intentionally as a **flat playbook** (no roles) to understand the raw mechanics before adding any abstraction. The goal was simple: update all servers and install basic utilities.
+
+**`playbooks/server_update.yml`:**
+```yaml
+- name: Server Initialisation and Update
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update apt cache and upgrade all packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install basic troubleshooting utilities
+      apt:
+        name:
+          - curl
+          - git
+          - vim
+          - htop
+        state: present
+```
+
+**Result:**
+```
+TASK [Update apt cache and upgrade all packages] → changed (on all 3)
+TASK [Install basic troubleshooting utilities]  → ok (already installed — idempotency in action)
+```
+
+**Key lesson observed:** The `ok` status on the utilities task demonstrated **idempotency** — Ansible checked the servers, found the packages were already installed (pre-installed on the Ubuntu AMI), and did nothing rather than wastefully reinstalling them.
+
+---
+
+#### Step 4: Moving to Roles (Production Structure)
+
+After understanding flat playbooks, we rebuilt the Ansible configuration using **Roles** — the industry-standard approach for organising reusable configuration code.
+
+**Why Roles over multiple flat playbooks?**
+
+| Multiple Flat Playbooks | Roles |
+|---|---|
+| Run 10 `ansible-playbook` commands to set up a new server | One master playbook, one command |
+| Code is scattered across many files | All Docker code lives in `roles/docker/`, all Nginx code in `roles/nginx/` |
+| Can't be shared or reused across projects | Copy the `roles/docker/` folder to any new project and it works instantly |
+| No access to Ansible Galaxy | Can install community roles: `ansible-galaxy install geerlingguy.docker` |
+
+The master playbook became beautifully clean:
+
+**`playbooks/install_services.yml`:**
+```yaml
+- name: Install Docker and Nginx using Roles
+  hosts: role_web
+  become: yes
+  roles:
+    - docker
+    - nginx
+```
+
+---
+
+#### Step 5: Errors Faced and How They Were Fixed
+
+The path to a working deployment involved four real-world bugs, each teaching a valuable lesson.
+
+---
+
+**Bug #0 — SSH Key Permission Denied on WSL**
+
+```
+Warning: Unprotected private key file!
+Permissions 0777 for 'ssh-keys/aws-infra-key' are too open.
+It is required that your private key files are NOT accessible by others.
+```
+
+**Root Cause:** The SSH private key was stored on the Windows drive (`D:\`) and accessed from WSL via `/mnt/d/`. By default, WSL mounts Windows drives without Linux permission metadata — every file appears as `-rwxrwxrwx` (world-readable, 777). Linux SSH refuses to use any key that isn't strictly locked down to the owner only (`chmod 400`). Running `chmod 400` appeared to work but the permissions would revert, because the NTFS filesystem had nowhere to store Linux permission bits.
+
+**Fix:** WSL supports a `metadata` mount option that stores Linux permission data inside a hidden NTFS extended attribute on each file. Adding the following to `/etc/wsl.conf` and restarting WSL with `wsl --shutdown` enabled `chmod` to work permanently on Windows-mounted drives:
+
+```ini
+[automount]
+options = "metadata"
+```
+
+After restart, `chmod 400 ssh-keys/aws-infra-key` set the correct `-r--------` permissions and SSH accepted the key without issue.
+
+---
+
+**Bug #1 — Role Not Found**
+
+```
+ERROR! the role 'docker' was not found in
+/ansible/playbooks/roles:/home/spydy/.ansible/roles...
+```
+
+**Root Cause:** Because we organised playbooks inside a `playbooks/` subfolder, Ansible searched for roles at `playbooks/roles/docker` instead of `ansible/roles/docker`.
+
+**Fix:** Added `roles_path = roles` to `ansible.cfg`. This tells Ansible to always resolve roles relative to the `ansible.cfg` file's location, not the playbook's location.
+
+---
+
+**Bug #2 — `apt-key` Not Found**
+
+```
+FAILED! => {"msg": "Failed to find required executable 'apt-key'..."}
+```
+
+**Root Cause:** The original Docker role used `apt_key` (the old way to add GPG keys). Modern Ubuntu (22.04+) has completely removed the `apt-key` command as it was deemed insecure. Our EC2 instances were running a newer Ubuntu AMI, so the command no longer existed on the server.
+
+**Fix:** Replaced `apt_key` with the modern **keyring approach** — creating a secure `/etc/apt/keyrings/` directory and downloading Docker's GPG key directly into it:
+
+```yaml
+- name: Create directory for Docker GPG key
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Docker official GPG key using curl
+  command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  args:
+    creates: /etc/apt/keyrings/docker.asc
+```
+
+The repository string was also updated to reference the new key location:
+```
+deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://...
+```
+
+---
+
+**Bug #3 — `get_url` Python SSL Bug**
+
+```
+FAILED! => {"msg": "An unknown error occurred: 'CustomHTTPSConnection'
+object has no attribute 'cert_file'"}
+```
+
+**Root Cause:** The `get_url` Ansible module internally uses Python's `urllib` library to make HTTPS requests. There is a known compatibility bug between a specific version of Python and certain versions of the `urllib3` library where the `cert_file` attribute is missing. This is an Ansible control-node bug — nothing wrong with the servers or our code.
+
+**Fix:** Bypassed the buggy Ansible module entirely and used the `command` module to run raw `curl` instead. The `creates:` argument was added to keep the task idempotent (skip if the file already exists):
+
+```yaml
+- name: Add Docker official GPG key using curl (bypassing Ansible Python bug)
+  command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  args:
+    creates: /etc/apt/keyrings/docker.asc
+```
+
+---
+
+#### Final Result ✅
+
+After all fixes, the playbook ran cleanly across all three environments:
+
+```
+PLAY RECAP
+13.203.73.243  : ok=11  changed=5  unreachable=0  failed=0
+13.232.74.58   : ok=11  changed=5  unreachable=0  failed=0
+15.206.189.32  : ok=11  changed=5  unreachable=0  failed=0
+```
+
+All three servers now have:
+- ✅ Docker CE (latest) installed and running
+- ✅ Docker service enabled on boot
+- ✅ `ubuntu` user added to the `docker` group
+- ✅ Nginx installed and running (verified by opening the server's IP in a browser)
 
 ---
 
@@ -189,3 +368,7 @@ ansible env_dev -m ping      # Targeted single environment ping
 | SSH keys in `ssh-keys/` + `.gitignore` | Keeps secrets out of version control completely |
 | WSL metadata for key permissions | Required to enforce strict Linux `chmod 400` on Windows-mounted NTFS drives |
 | Static `hosts.ini` for Ansible inventory | Simpler to understand and debug while learning; dynamic inventory (`aws_ec2.yml`) prepared for CI/CD |
+| Flat playbook first, then roles | Understanding raw task execution before adding abstraction layers builds real knowledge |
+| `docker-ce` over `docker.io` | `docker-ce` is the latest, official Docker release; `docker.io` is maintained by Ubuntu and lags months behind |
+| `curl` over `get_url` for GPG key | Bypassed a known Python/urllib SSL bug in the specific Ansible version on the control node |
+| `roles_path` in `ansible.cfg` | Prevents role resolution errors when playbooks are organised inside a `playbooks/` subfolder |
