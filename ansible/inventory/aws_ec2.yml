@@ -9,3 +9,7 @@ keyed_groups:
     prefix: tag_Environment
   - key: tags.Role
     prefix: tag_Role
+
+# Force Ansible to use the Public IP address instead of the unreachable Private DNS
+compose:
+  ansible_host: public_ip_address
