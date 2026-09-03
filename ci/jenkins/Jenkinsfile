@@ -11,6 +11,9 @@ pipeline {
         // Secret Files uploaded to Jenkins
         TF_VARS_FILE = credentials('dev-tfvars')
         PUB_KEY_FILE = credentials('aws-infra-key.pub')
+        
+        // Pass AWS credentials from Windows into WSL Linux automatically!
+        WSLENV = 'AWS_ACCESS_KEY_ID/u:AWS_SECRET_ACCESS_KEY/u:AWS_DEFAULT_REGION/u'
     }
 
     stages {
@@ -44,8 +47,16 @@ pipeline {
                     bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
                 }
                 dir('ansible') {
-                    bat 'wsl ansible-playbook playbooks/server_update.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
-                    bat 'wsl ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
+                    // 1. Copy repo to native Linux filesystem to fix 777 world-writable permission errors
+                    bat 'wsl rm -rf /tmp/aws-infra'
+                    bat 'wsl cp -r ../ /tmp/aws-infra'
+                    
+                    // 2. Lock down the SSH private key (SSH rejects 777 permissions)
+                    bat 'wsl chmod 400 /tmp/aws-infra/ssh-keys/aws-infra-key'
+                    
+                    // 3. Run Ansible from inside the native Linux filesystem
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/server_update.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
                 }
             }
         }
