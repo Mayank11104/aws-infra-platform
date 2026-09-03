@@ -29,7 +29,7 @@ pipeline {
             steps {
                 dir('terraform/environments/dev') {
                     bat 'M:/tools/terraform.exe init'
-                    bat 'M:/tools/terraform.exe plan -var-file="%TF_VARS_FILE%" -var="public_key_path=%PUB_KEY_FILE%" -out=tfplan'
+                    bat 'M:/tools/terraform.exe plan -var-file="%TF_VARS_FILE%" -var="public_key_path=" -var="public_key=%PUB_KEY_FILE%" -out=tfplan'
                     bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
                 }
             }
