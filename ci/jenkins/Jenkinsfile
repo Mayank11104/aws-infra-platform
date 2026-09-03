@@ -9,8 +9,9 @@ pipeline {
         AWS_DEFAULT_REGION    = 'ap-south-1'
         
         // Secret Files uploaded to Jenkins
-        TF_VARS_FILE = credentials('dev-tfvars')
-        PUB_KEY_FILE = credentials('aws-infra-key.pub')
+        TF_VARS_FILE  = credentials('dev-tfvars')
+        PUB_KEY_FILE  = credentials('aws-infra-key.pub')
+        PRIV_KEY_FILE = credentials('aws-infra-key') // Your Private Key!
         
         // Pass AWS credentials from Windows into WSL Linux automatically!
         WSLENV = 'AWS_ACCESS_KEY_ID/u:AWS_SECRET_ACCESS_KEY/u:AWS_DEFAULT_REGION/u'
@@ -51,7 +52,9 @@ pipeline {
                     bat 'wsl rm -rf /tmp/aws-infra'
                     bat 'wsl cp -r ../ /tmp/aws-infra'
                     
-                    // 2. Lock down the SSH private key (SSH rejects 777 permissions)
+                    // 2. Inject the Jenkins Secret Private Key into Linux (it wasn't in GitHub!)
+                    bat 'wsl mkdir -p /tmp/aws-infra/ssh-keys'
+                    bat 'wsl bash -c "cp $(wslpath \'%PRIV_KEY_FILE%\') /tmp/aws-infra/ssh-keys/aws-infra-key"'
                     bat 'wsl chmod 400 /tmp/aws-infra/ssh-keys/aws-infra-key'
                     
                     // 3. Run Ansible from inside the native Linux filesystem
