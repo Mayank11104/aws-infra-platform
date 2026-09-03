@@ -15,8 +15,8 @@ pipeline {
             steps {
                 dir('terraform/environments/dev') {
                     // Validate syntax without connecting to S3 backend
-                    bat 'terraform init -backend=false'
-                    bat 'terraform validate'
+                    bat 'M:/tools/terraform.exe init -backend=false'
+                    bat 'M:/tools/terraform.exe validate'
                 }
             }
         }
@@ -24,9 +24,9 @@ pipeline {
         stage('Terraform Plan (Dev)') {
             steps {
                 dir('terraform/environments/dev') {
-                    bat 'terraform init'
-                    bat 'terraform plan -out=tfplan'
-                    bat 'terraform show -no-color tfplan > tfplan.txt'
+                    bat 'M:/tools/terraform.exe init'
+                    bat 'M:/tools/terraform.exe plan -out=tfplan'
+                    bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
                 }
             }
         }
@@ -37,7 +37,7 @@ pipeline {
             }
             steps {
                 dir('terraform/environments/dev') {
-                    bat 'terraform apply -auto-approve tfplan'
+                    bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
                 }
                 dir('ansible') {
                     bat 'wsl ansible-playbook playbooks/server_update.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
