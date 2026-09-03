@@ -37,7 +37,7 @@ pipeline {
 
         stage('Deploy to Dev') {
             when {
-                branch 'dev' // Only auto-apply on the dev branch
+                expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
             }
             steps {
                 dir('terraform/environments/dev') {
