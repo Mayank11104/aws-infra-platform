@@ -2,7 +2,7 @@
 # playbooks/install_services.yml
 
 - name: Install Docker and Nginx using Roles
-  hosts: role_web
+  hosts: tag_Role_web
   become: yes
   roles:
     - docker
