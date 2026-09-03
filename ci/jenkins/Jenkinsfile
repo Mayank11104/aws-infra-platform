@@ -40,7 +40,8 @@ pipeline {
                     sh 'terraform apply -auto-approve tfplan'
                 }
                 dir('ansible') {
-                    sh 'ansible-playbook playbooks/install_services.yml -i inventory/hosts.ini -l env_dev'
+                    sh 'ansible-playbook playbooks/server_update.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
+                    sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
                 }
             }
         }
@@ -55,7 +56,7 @@ pipeline {
 //                     sh 'terraform apply -auto-approve'
 //                 }
 //                 dir('ansible') {
-//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/hosts.ini -l env_staging'
+//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_staging'
 //                 }
 //             }
 //         }
@@ -79,7 +80,7 @@ pipeline {
 //                     sh 'terraform apply -auto-approve'
 //                 }
 //                 dir('ansible') {
-//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/hosts.ini -l env_prod'
+//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_prod'
 //                 }
 //             }
 //         }
