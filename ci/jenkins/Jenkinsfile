@@ -1,0 +1,87 @@
+pipeline {
+    agent any
+
+    environment {
+        // AWS Credentials - configure these in Jenkins > Manage Jenkins > Credentials
+        // Kind: Secret text | ID: aws-access-key-id / aws-secret-access-key
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+        AWS_DEFAULT_REGION    = 'ap-south-1'
+    }
+
+    stages {
+
+        stage('Terraform Validate') {
+            steps {
+                dir('terraform/environments/dev') {
+                    // Validate syntax without connecting to S3 backend
+                    sh 'terraform init -backend=false'
+                    sh 'terraform validate'
+                }
+            }
+        }
+
+        stage('Terraform Plan (Dev)') {
+            steps {
+                dir('terraform/environments/dev') {
+                    sh 'terraform init'
+                    sh 'terraform plan -out=tfplan'
+                    sh 'terraform show -no-color tfplan > tfplan.txt'
+                }
+            }
+        }
+
+        stage('Deploy to Dev') {
+            when {
+                branch 'dev' // Only auto-apply on the dev branch
+            }
+            steps {
+                dir('terraform/environments/dev') {
+                    sh 'terraform apply -auto-approve tfplan'
+                }
+                dir('ansible') {
+                    sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev'
+                }
+            }
+        }
+
+//         stage('Deploy to Staging') {
+//             when {
+//                 branch 'staging' // Only auto-apply on the staging branch
+//             }
+//             steps {
+//                 dir('terraform/environments/staging') {
+//                     sh 'terraform init'
+//                     sh 'terraform apply -auto-approve'
+//                 }
+//                 dir('ansible') {
+//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_staging'
+//                 }
+//             }
+//         }
+
+//         stage('Approval Gate: Prod') {
+//             when {
+//                 branch 'main' // Prod gate only triggers on main branch
+//             }
+//             steps {
+//                 input message: "Approve deployment to PRODUCTION?", ok: "Deploy"
+//             }
+//         }
+
+//         stage('Deploy to Prod') {
+//             when {
+//                 branch 'main'
+//             }
+//             steps {
+//                 dir('terraform/environments/prod') {
+//                     sh 'terraform init'
+//                     sh 'terraform apply -auto-approve'
+//                 }
+//                 dir('ansible') {
+//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_prod'
+//                 }
+//             }
+//         }
+     }
+}
