@@ -54,6 +54,10 @@ pipeline {
                         string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
                         string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
                     ]) {
+                        // Setup Python virtual environment and install AI dependencies
+                        bat 'python -m venv venv'
+                        bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
+
                         // Agents run, enrich with Neo4j history, generate risk-brief/report.md, save to graph, then exit.
                         ai_exit_code = bat(
                             script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/dev/tfplan.json --env dev --run-id %BUILD_ID%',
