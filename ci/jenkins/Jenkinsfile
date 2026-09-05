@@ -178,43 +178,265 @@ pipeline {
             }
         }
 
-//         stage('Deploy to Staging') {
-//             when {
-//                 branch 'staging' // Only auto-apply on the staging branch
-//             }
-//             steps {
-//                 dir('terraform/environments/staging') {
-//                     sh 'terraform init'
-//                     sh 'terraform apply -auto-approve'
-//                 }
-//                 dir('ansible') {
-//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_staging'
-//                 }
-//             }
-//         }
+        // ── STAGING ────────────────────────────────────────────────────────────
 
-//         stage('Approval Gate: Prod') {
-//             when {
-//                 branch 'main' // Prod gate only triggers on main branch
-//             }
-//             steps {
-//                 input message: "Approve deployment to PRODUCTION?", ok: "Deploy"
-//             }
-//         }
+        stage('Terraform Plan (Staging)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/staging' || env.GIT_BRANCH == 'staging' }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'staging-tfvars', variable: 'STAGING_VARS_FILE')]) {
+                    dir('terraform/environments/staging') {
+                        bat 'M:/tools/terraform.exe init'
+                        bat 'M:/tools/terraform.exe plan -var-file="%STAGING_VARS_FILE%" -var="public_key_path=%PUB_KEY_FILE%" -out=tfplan'
+                        bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
+                        bat 'M:/tools/terraform.exe show -json tfplan > tfplan.json'
+                    }
+                }
+            }
+        }
 
-//         stage('Deploy to Prod') {
-//             when {
-//                 branch 'main'
-//             }
-//             steps {
-//                 dir('terraform/environments/prod') {
-//                     sh 'terraform init'
-//                     sh 'terraform apply -auto-approve'
-//                 }
-//                 dir('ansible') {
-//                     sh 'ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_prod'
-//                 }
-//             }
-//         }
+        stage('AI Risk Gate (Staging)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/staging' || env.GIT_BRANCH == 'staging' }
+            }
+            steps {
+                script {
+                    def ai_exit_code = 0
+                    withCredentials([
+                        string(credentialsId: 'bedrock-access-key', variable: 'BEDROCK_AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'bedrock-secret-key', variable: 'BEDROCK_AWS_SECRET_ACCESS_KEY'),
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat 'if not exist venv\\Scripts\\python.exe python -m venv venv'
+                        bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
+                        ai_exit_code = bat(
+                            script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/staging/tfplan.json --env staging --run-id %BUILD_ID%',
+                            returnStatus: true
+                        )
+                    }
+                    def riskLevel = ai_exit_code == 0 ? "LOW RISK" : ai_exit_code == 2 ? "REVIEW REQUIRED" : "ERROR"
+                    emailext(
+                        to: 'mayuchaudhari2004@gmail.com',
+                        from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
+                        subject: "[Jenkins] STAGING — Audit Report - Build #${BUILD_ID} (${riskLevel})",
+                        body: """
+                            <h2>Infrastructure Audit Report — STAGING</h2>
+                            <p><b>Pipeline:</b> ${JOB_NAME} #${BUILD_ID}</p>
+                            <p><b>AI Recommendation:</b> ${riskLevel}</p>
+                            <p>Review and approve/abort: <a href="${BUILD_URL}input">${BUILD_URL}input</a></p>
+                        """,
+                        mimeType: 'text/html',
+                        attachmentsPattern: 'audit-report/report.pdf',
+                        attachLog: false
+                    )
+                    if (ai_exit_code == 1) {
+                        error("AI Risk Gate (Staging) encountered an error. Deployment blocked.")
+                    }
+                    archiveArtifacts artifacts: 'audit-report/report.pdf', allowEmptyArchive: false
+                }
+            }
+        }
+
+        stage('Manual Approval (Staging)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/staging' || env.GIT_BRANCH == 'staging' }
+            }
+            steps {
+                script {
+                    def approvalUser = "jenkins"
+                    try {
+                        def userInput = input(
+                            message: "Approve deployment to STAGING? Review the audit report first.",
+                            ok: "Approved - Deploy to Staging",
+                            submitterParameter: 'approver',
+                            parameters: [
+                                text(name: 'APPROVAL_REASON', defaultValue: '', description: 'Optional: Why are you approving?')
+                            ]
+                        )
+                        approvalUser = userInput['approver'] ?: "unknown"
+                    } catch (err) {
+                        withCredentials([
+                            string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                            string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                            string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                        ]) {
+                            bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision rejected --user unknown"
+                        }
+                        error("Staging deployment rejected by human approver.")
+                    }
+                    withCredentials([
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision approved --user ${approvalUser}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/staging' || env.GIT_BRANCH == 'staging' }
+            }
+            steps {
+                dir('terraform/environments/staging') {
+                    bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
+                }
+                dir('ansible') {
+                    bat 'wsl rm -rf /tmp/aws-infra'
+                    bat 'wsl mkdir -p /tmp/aws-infra'
+                    bat 'wsl cp -r . /tmp/aws-infra/ansible'
+                    bat 'wsl mkdir -p ~/.ssh'
+                    bat 'wsl bash -c "cp \\"$(wslpath \'%PRIV_KEY_FILE%\')\\" ~/.ssh/id_rsa"'
+                    bat 'wsl chmod 600 ~/.ssh/id_rsa'
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_staging"'
+                    withCredentials([
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env staging --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env staging --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                    }
+                }
+            }
+        }
+
+        // ── PRODUCTION ─────────────────────────────────────────────────────────
+
+        stage('Terraform Plan (Prod)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main' }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'prod-tfvars', variable: 'PROD_VARS_FILE')]) {
+                    dir('terraform/environments/prod') {
+                        bat 'M:/tools/terraform.exe init'
+                        bat 'M:/tools/terraform.exe plan -var-file="%PROD_VARS_FILE%" -var="public_key_path=%PUB_KEY_FILE%" -out=tfplan'
+                        bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
+                        bat 'M:/tools/terraform.exe show -json tfplan > tfplan.json'
+                    }
+                }
+            }
+        }
+
+        stage('AI Risk Gate (Prod)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main' }
+            }
+            steps {
+                script {
+                    def ai_exit_code = 0
+                    withCredentials([
+                        string(credentialsId: 'bedrock-access-key', variable: 'BEDROCK_AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'bedrock-secret-key', variable: 'BEDROCK_AWS_SECRET_ACCESS_KEY'),
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat 'if not exist venv\\Scripts\\python.exe python -m venv venv'
+                        bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
+                        ai_exit_code = bat(
+                            script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/prod/tfplan.json --env prod --run-id %BUILD_ID%',
+                            returnStatus: true
+                        )
+                    }
+                    def riskLevel = ai_exit_code == 0 ? "LOW RISK" : ai_exit_code == 2 ? "REVIEW REQUIRED" : "ERROR"
+                    emailext(
+                        to: 'mayuchaudhari2004@gmail.com',
+                        from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
+                        subject: "[Jenkins] ⚠️ PRODUCTION — Audit Report - Build #${BUILD_ID} (${riskLevel})",
+                        body: """
+                            <h2>⚠️ Infrastructure Audit Report — PRODUCTION</h2>
+                            <p><b>Pipeline:</b> ${JOB_NAME} #${BUILD_ID}</p>
+                            <p><b>AI Recommendation:</b> ${riskLevel}</p>
+                            <p><b>This is a PRODUCTION deployment. Review the full audit report carefully before approving.</b></p>
+                            <p>Review and approve/abort: <a href="${BUILD_URL}input">${BUILD_URL}input</a></p>
+                        """,
+                        mimeType: 'text/html',
+                        attachmentsPattern: 'audit-report/report.pdf',
+                        attachLog: false
+                    )
+                    if (ai_exit_code == 1) {
+                        error("AI Risk Gate (Prod) encountered an error. Deployment blocked.")
+                    }
+                    archiveArtifacts artifacts: 'audit-report/report.pdf', allowEmptyArchive: false
+                }
+            }
+        }
+
+        stage('Manual Approval (Prod)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main' }
+            }
+            steps {
+                script {
+                    def approvalUser = "jenkins"
+                    // Production has a 4-hour timeout — longer than dev/staging
+                    timeout(time: 4, unit: 'HOURS') {
+                        try {
+                            def userInput = input(
+                                message: "⚠️ PRODUCTION DEPLOYMENT — This affects live infrastructure. Are you sure?",
+                                ok: "YES — Approved for Production",
+                                submitterParameter: 'approver',
+                                parameters: [
+                                    text(name: 'APPROVAL_REASON', defaultValue: '', description: 'Required: State your reason for approving this production deployment.')
+                                ]
+                            )
+                            approvalUser = userInput['approver'] ?: "unknown"
+                        } catch (err) {
+                            withCredentials([
+                                string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                                string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                                string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                            ]) {
+                                bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision rejected --user unknown"
+                            }
+                            error("Production deployment rejected or timed out.")
+                        }
+                    }
+                    withCredentials([
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision approved --user ${approvalUser}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Prod') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main' }
+            }
+            steps {
+                dir('terraform/environments/prod') {
+                    bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
+                }
+                dir('ansible') {
+                    bat 'wsl rm -rf /tmp/aws-infra'
+                    bat 'wsl mkdir -p /tmp/aws-infra'
+                    bat 'wsl cp -r . /tmp/aws-infra/ansible'
+                    bat 'wsl mkdir -p ~/.ssh'
+                    bat 'wsl bash -c "cp \\"$(wslpath \'%PRIV_KEY_FILE%\')\\" ~/.ssh/id_rsa"'
+                    bat 'wsl chmod 600 ~/.ssh/id_rsa'
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_prod"'
+                    withCredentials([
+                        string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
+                    ]) {
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env prod --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env prod --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                    }
+                }
+            }
+        }
+
      }
 }
