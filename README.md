@@ -9,6 +9,8 @@ A production-grade Infrastructure as Code (IaC) setup provisioning a fully isola
 ```
 Ansible+terraform/
 │
+├── agents/                  # 🤖 AI Risk Gate (LangGraph + Neo4j) → See [agents/README.md](agents/README.md)
+│
 ├── terraform/
 │   ├── bootstrap/
 │   │   └── s3_dyanamodb_creation/   # Phase 1: Create backend storage (local state)
@@ -350,11 +352,33 @@ All three servers now have:
 
 ---
 
+### Phase 6 — The AI Infrastructure Risk Gate (Jenkins CI/CD)
+
+The final piece of the platform is a fully automated, intelligent CI/CD pipeline built in **Jenkins**. Instead of relying purely on static analysis tools and human reviewers, we built a **Multi-Agent AI Gatekeeper** to autonomously review infrastructure changes before deployment.
+
+When a pull request or deployment triggers the pipeline:
+1. Jenkins runs `terraform plan` and generates a JSON output.
+2. The pipeline invokes a specialized Python application running **LangGraph** and **AWS Bedrock (Mistral 7B)**.
+3. **Four Parallel Agents** analyze the plan:
+   - **SecOps Agent**: Checks IAM and network security (grounded by `checkov` and `tfsec`).
+   - **FinOps Agent**: Analyzes cost spikes (grounded by `infracost`).
+   - **Blast Radius Agent**: Detects stateful resource destruction and downtime risks.
+   - **Integrity Agent**: Ensures Ansible tags (`Role`, `Environment`) are correctly applied.
+4. A **Synthesizer Agent** aggregates the findings into a highly detailed **Markdown Risk Brief**.
+5. The pipeline pauses, emails the Risk Brief to the administrator (using a custom Gmail SMTP integration), and waits for manual approval.
+6. A **Neo4j Knowledge Graph** acts as the system's long-term memory, storing the history of every resource, agent finding, and human approval to prevent alert fatigue on future runs.
+
+*(For a deep dive into the AI architecture, prompt engineering, and Neo4j graph schemas, see the dedicated [Agents README](agents/README.md).)*
+
+---
+
 ## 🚀 Roadmap
 
 - [x] Create Ansible playbooks and roles for configuration management (Nginx, Docker)
-- [ ] Jenkins CI/CD Pipeline — Terraform lint → plan → security scan → apply (with manual approval for prod)
-- [ ] Integrate `checkov` and `ansible-lint` as hard security gates in the pipeline
+- [x] Jenkins CI/CD Pipeline — Terraform lint → plan → apply
+- [x] Integrate `checkov` and `infracost` as static analysis gates
+- [x] Build LangGraph Multi-Agent AI Gatekeeper for autonomous PR review
+- [x] Implement Neo4j Knowledge Graph memory core
 - [ ] Expand VPC module to support 2 AZs and wire in the ALB module
 
 ---
@@ -372,3 +396,6 @@ All three servers now have:
 | `docker-ce` over `docker.io` | `docker-ce` is the latest, official Docker release; `docker.io` is maintained by Ubuntu and lags months behind |
 | `curl` over `get_url` for GPG key | Bypassed a known Python/urllib SSL bug in the specific Ansible version on the control node |
 | `roles_path` in `ansible.cfg` | Prevents role resolution errors when playbooks are organised inside a `playbooks/` subfolder |
+| Multi-Agent Architecture (LangGraph) | A single monolithic LLM prompt fails on complex Terraform plans. Distributed agents (FinOps, SecOps) improve focus and reduce hallucinations. |
+| Neo4j Knowledge Graph Memory | Prevents AI "alert fatigue" by remembering if a human administrator previously approved a specific security or cost warning. |
+| Dynamic Jenkins Email Integration | Admins shouldn't have to log into Jenkins to read logs. The AI sends beautifully formatted Markdown briefs directly to their inbox with a one-click approval link. |

@@ -399,5 +399,5 @@ Produce a Markdown document with these sections in this order:
 - Do not invent findings. Only report what the four agents returned.
 - If an agent returned an error or low confidence, explicitly note the limitation.
 - Do not recommend approving or rejecting — only characterize the risk level.
-- Keep the entire brief under 600 words. Human approvers stop reading beyond that.
+- Provide detailed explanations and actionable context for every finding so the human approver has extremely high confidence in the analysis before making a decision. Do not artificially limit the length of the brief.
 """

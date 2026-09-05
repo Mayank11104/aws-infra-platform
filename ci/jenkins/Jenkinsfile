@@ -68,7 +68,8 @@ pipeline {
                     //   Add your Gmail App Password as a Jenkins credential
                     def riskLevel = ai_exit_code == 0 ? "🟢 LOW RISK" : ai_exit_code == 2 ? "🔴 REVIEW REQUIRED" : "❌ ERROR"
                     emailext(
-                        to: 'admin@yourdomain.com', // ← Change to your admin email
+                        to: 'mayuchaudhari2004@gmail.com', // ← Admin email
+                        from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
                         subject: "[Jenkins] AI Risk Brief — Build #${BUILD_ID} (${riskLevel})",
                         body: """
                             <h2>AI Infrastructure Risk Brief</h2>
