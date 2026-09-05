@@ -57,8 +57,8 @@ pipeline {
                         string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
                         string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
                     ]) {
-                        // Setup Python virtual environment and install AI dependencies
-                        bat 'python -m venv venv'
+                        // Setup Python virtual environment (skip creation if it already exists)
+                        bat 'if not exist venv\\Scripts\\python.exe python -m venv venv'
                         bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
 
                         // Agents run, enrich with Neo4j history, generate risk-brief/report.md, save to graph, then exit.
@@ -151,9 +151,10 @@ pipeline {
                     bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
                 }
                 dir('ansible') {
-                    // 1. Copy repo to native Linux filesystem to fix 777 world-writable permission errors
+                    // 1. Copy ansible dir to native Linux filesystem to fix 777 world-writable permission errors
                     bat 'wsl rm -rf /tmp/aws-infra'
-                    bat 'wsl cp -r ../ /tmp/aws-infra'
+                    bat 'wsl mkdir -p /tmp/aws-infra'
+                    bat 'wsl cp -r . /tmp/aws-infra/ansible'
                     
                     // 2. Inject the Jenkins Secret Private Key into Linux
                     withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')]) {
