@@ -146,6 +146,10 @@ def synthesizer_node(state: PipelineState, llm) -> dict:
     response = llm.invoke(messages)
     llm_brief = response.content.strip()
 
+    # Strip out ```markdown code block wrappers if the LLM includes them
+    if llm_brief.startswith("```"):
+        llm_brief = llm_brief.removeprefix("```markdown").removeprefix("```md").removeprefix("```").removesuffix("```").strip()
+
     # --- Build final Markdown with a guaranteed header regardless of LLM output ---
     graph_available = state.get("graph_available", False)
     env_baseline = state.get("environment_baseline", {})
