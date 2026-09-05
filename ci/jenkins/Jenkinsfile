@@ -88,7 +88,7 @@ pipeline {
                             <p><i>The agents are advisory only - you make the final decision.</i></p>
                         """,
                         mimeType: 'text/html',
-                        attachmentsPattern: 'risk-brief/report.md',
+                        attachmentsPattern: 'risk-brief/report.pdf',
                         attachLog: false
                     )
 
@@ -97,7 +97,7 @@ pipeline {
                     }
 
                     // -- Step 3: Archive the report as a Jenkins artifact --------------
-                    archiveArtifacts artifacts: 'risk-brief/report.md', allowEmptyArchive: false
+                    archiveArtifacts artifacts: 'risk-brief/report.pdf', allowEmptyArchive: false
                 }
             }
         }

@@ -81,12 +81,23 @@ def main():
 
         # Write Risk Brief to disk — Jenkins will archive this and email it
         report_path = "risk-brief/report.md"
+        pdf_path = "risk-brief/report.pdf"
         os.makedirs("risk-brief", exist_ok=True)
         brief = final_state.get("risk_brief_markdown", "_No report generated._")
+        
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(brief)
+            
+        try:
+            from markdown_pdf import Section, MarkdownPdf
+            pdf = MarkdownPdf(toc_level=0)
+            pdf.add_section(Section(brief))
+            pdf.save(pdf_path)
+            print(f"\n📄 Risk Brief PDF generated: {pdf_path}")
+        except Exception as e:
+            print(f"\n⚠️ Failed to generate PDF: {e}")
 
-        print(f"\n📄 Risk Brief written to: {report_path}")
+        print(f"📄 Risk Brief Markdown written to: {report_path}")
 
         # ── Phase 3: Write to Knowledge Graph ──────────────────────────────
         # Only write to graph if graph is available. The agents are advisory,
