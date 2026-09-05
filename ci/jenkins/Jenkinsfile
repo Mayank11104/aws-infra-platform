@@ -49,7 +49,7 @@ pipeline {
                 script {
                     def ai_exit_code = 0
 
-                    // ── Step 1: Run the AI agents (Account B + Neo4j) ──────────
+                    // -- Step 1: Run the AI agents (Account B + Neo4j) ----------
                     withCredentials([
                         string(credentialsId: 'bedrock-access-key', variable: 'BEDROCK_AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'bedrock-secret-key', variable: 'BEDROCK_AWS_SECRET_ACCESS_KEY'),
@@ -68,16 +68,16 @@ pipeline {
                         )
                     }
 
-                    // ── Step 2: Email the Risk Brief to the admin ─────────────────────
+                    // -- Step 2: Email the Risk Brief to the admin ---------------------
                     // Jenkins Email Extension Plugin must be configured:
-                    //   Manage Jenkins → Configure System → Extended E-mail Notification
+                    //   Manage Jenkins -> Configure System -> Extended E-mail Notification
                     //   Set SMTP server (e.g. smtp.gmail.com:587, TLS enabled)
                     //   Add your Gmail App Password as a Jenkins credential
-                    def riskLevel = ai_exit_code == 0 ? "🟢 LOW RISK" : ai_exit_code == 2 ? "🔴 REVIEW REQUIRED" : "❌ ERROR"
+                    def riskLevel = ai_exit_code == 0 ? "LOW RISK" : ai_exit_code == 2 ? "REVIEW REQUIRED" : "ERROR"
                     emailext(
-                        to: 'mayuchaudhari2004@gmail.com', // ← Admin email
+                        to: 'mayuchaudhari2004@gmail.com', // <- Admin email
                         from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
-                        subject: "[Jenkins] AI Risk Brief — Build #${BUILD_ID} (${riskLevel})",
+                        subject: "[Jenkins] AI Risk Brief - Build #${BUILD_ID} (${riskLevel})",
                         body: """
                             <h2>AI Infrastructure Risk Brief</h2>
                             <p><b>Pipeline:</b> ${JOB_NAME} #${BUILD_ID}</p>
@@ -85,7 +85,7 @@ pipeline {
                             <p>The full Risk Brief is attached. Please review it and then either
                             <b>Approve</b> or <b>Abort</b> the pipeline from the Jenkins UI:</p>
                             <p><a href="${BUILD_URL}input">${BUILD_URL}input</a></p>
-                            <p><i>The agents are advisory only — you make the final decision.</i></p>
+                            <p><i>The agents are advisory only - you make the final decision.</i></p>
                         """,
                         mimeType: 'text/html',
                         attachmentsPattern: 'risk-brief/report.md',
@@ -96,21 +96,21 @@ pipeline {
                         error("AI Risk Gate encountered an error. Deployment blocked. Check the report.")
                     }
 
-                    // ── Step 3: Archive the report as a Jenkins artifact ──────────────
+                    // -- Step 3: Archive the report as a Jenkins artifact --------------
                     archiveArtifacts artifacts: 'risk-brief/report.md', allowEmptyArchive: false
                 }
             }
         }
 
-        // ── Manual Approval Gate ─────────────────────────────────────────────────
+        // -- Manual Approval Gate -------------------------------------------------
         stage('Manual Approval') {
             steps {
                 script {
                     def approvalUser = "jenkins"
                     try {
                         def userInput = input(
-                            message: "📋 AI Risk Brief has been emailed to you. Review it and decide:",
-                            ok: "✅ Approved — Proceed to Apply",
+                            message: "AI Risk Brief has been emailed to you. Review it and decide:",
+                            ok: "Approved - Proceed to Apply",
                             submitterParameter: 'approver',
                             parameters: [
                                 text(name: 'APPROVAL_REASON', defaultValue: '', description: 'Optional: Why are you approving this?')
