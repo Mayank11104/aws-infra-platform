@@ -171,8 +171,8 @@ pipeline {
                         string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
                     ]) {
                         // Hardcoding the update for the lab. In prod, you'd parse ansible JSON output.
-                        bat ".\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
-                        bat ".\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                        bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
                     }
                 }
             }
