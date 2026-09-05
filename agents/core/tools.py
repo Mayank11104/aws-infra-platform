@@ -30,7 +30,7 @@ from langchain.tools import tool
 # ---------------------------------------------------------------------------
 WORKSPACE_DIR = os.environ.get(
     "RISK_GATE_WORKSPACE_DIR",
-    "/tmp/aws-infra",  # Default: the WSL-safe copy we create in Jenkinsfile
+    ".",  # Default: current directory (Jenkins workspace)
 )
 
 OUTPUT_MAX_BYTES = 500_000  # ~500KB ceiling on tool stdout before LLM sees it
