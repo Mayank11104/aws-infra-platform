@@ -185,18 +185,3 @@ The `AI Risk Gate` stage in Jenkins intercepts the pipeline between `plan` and `
 | WSL for Ansible on Windows Jenkins | Allows Linux-native Ansible tooling on a Windows-hosted Jenkins server |
 | `curl` over `get_url` for Docker GPG | Bypassed a known Python/urllib SSL bug in the specific Ansible/urllib3 version |
 
----
-
-## Roadmap
-
-- [x] S3 + DynamoDB remote state backend
-- [x] Reusable Terraform modules (VPC, SG, EC2)
-- [x] Multi-environment isolation (dev/staging/prod)
-- [x] Dynamic Ansible inventory via AWS EC2 plugin
-- [x] Ansible roles for Docker CE and Nginx
-- [x] Jenkins CI/CD Pipeline (validate → plan → gate → apply → configure)
-- [x] LangGraph multi-agent AI Risk Gate
-- [x] Neo4j Knowledge Graph memory core
-- [x] Infrastructure Audit Report PDF generation and email delivery
-- [ ] Staging and Production pipeline stages
-- [ ] ALB module + multi-AZ VPC expansion
