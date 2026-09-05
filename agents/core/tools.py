@@ -45,7 +45,8 @@ def _validate_path(path_str: str, expected_suffix: str | None = None) -> Path:
     resolved = Path(path_str).resolve()
     allowed_root = Path(WORKSPACE_DIR).resolve()
 
-    if not resolved.is_relative_to(allowed_root):
+    # Case-insensitive prefix check for Windows compatibility (C:\ vs c:\)
+    if not str(resolved).lower().startswith(str(allowed_root).lower()):
         raise ValueError(
             f"Path '{resolved}' is outside the allowed workspace '{allowed_root}'. "
             f"Tool execution refused."
