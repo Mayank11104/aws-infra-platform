@@ -12,7 +12,7 @@ The AI is a **reviewer, never a decision-maker**. It intercepts the CI/CD pipeli
 ## Architecture Overview
 
 
-![IaC Sentinel Autopilot — Architecture Diagram](docs/images/infra (2).png)
+![IaC Sentinel Autopilot — Architecture Diagram](docs/images/infra(2).png)
 
 ---
 
