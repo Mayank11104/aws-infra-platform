@@ -2,21 +2,18 @@ pipeline {
     agent any
 
     environment {
-        // AWS Credentials - configure these in Jenkins > Manage Jenkins > Credentials
-        // Kind: Secret text | ID: aws-access-key-id / aws-secret-access-key
         AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         AWS_DEFAULT_REGION    = 'ap-south-1'
-        
-        // Secret Files uploaded to Jenkins
+
         TF_VARS_FILE  = credentials('dev-tfvars')
         PUB_KEY_FILE  = credentials('aws-infra-key.pub')
-        PRIV_KEY_FILE = credentials('aws-infra-key') // Your Private Key!
-        
-        // Pass AWS credentials from Windows into WSL Linux automatically!
+        PRIV_KEY_FILE = credentials('aws-infra-key')
+
+        // WSL inherits these from the Windows environment via the /u flag
         WSLENV = 'AWS_ACCESS_KEY_ID/u:AWS_SECRET_ACCESS_KEY/u:AWS_DEFAULT_REGION/u'
-        
-        // Force Python to use UTF-8 encoding for console output to prevent emoji crash
+
+        // Prevents emoji/unicode from crashing Python stdout on Windows console
         PYTHONIOENCODING = 'utf-8'
     }
 
@@ -25,12 +22,14 @@ pipeline {
         stage('Terraform Validate') {
             steps {
                 dir('terraform/environments/dev') {
-                    // Validate syntax without connecting to S3 backend
+                    // -backend=false skips S3 auth — syntax-only check
                     bat 'M:/tools/terraform.exe init -backend=false'
                     bat 'M:/tools/terraform.exe validate'
                 }
             }
         }
+
+        // ── DEV ────────────────────────────────────────────────────────────────
 
         stage('Terraform Plan (Dev)') {
             when {
@@ -41,7 +40,6 @@ pipeline {
                     bat 'M:/tools/terraform.exe init'
                     bat 'M:/tools/terraform.exe plan -var-file="%TF_VARS_FILE%" -var="public_key_path=%PUB_KEY_FILE%" -out=tfplan'
                     bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
-                    // IMPORTANT: Generate JSON for the AI Risk Gate
                     bat 'M:/tools/terraform.exe show -json tfplan > tfplan.json'
                 }
             }
@@ -55,7 +53,6 @@ pipeline {
                 script {
                     def ai_exit_code = 0
 
-                    // -- Step 1: Run the AI agents (Account B + Neo4j) ----------
                     withCredentials([
                         string(credentialsId: 'bedrock-access-key', variable: 'BEDROCK_AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'bedrock-secret-key', variable: 'BEDROCK_AWS_SECRET_ACCESS_KEY'),
@@ -63,25 +60,20 @@ pipeline {
                         string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
                         string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
                     ]) {
-                        // Setup Python virtual environment (skip creation if it already exists)
                         bat 'if not exist venv\\Scripts\\python.exe python -m venv venv'
                         bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
 
-                        // Agents run, enrich with Neo4j history, generate audit-report/report.md, save to graph, then exit.
                         ai_exit_code = bat(
                             script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/dev/tfplan.json --env dev --run-id %BUILD_ID%',
                             returnStatus: true
                         )
                     }
 
-                    // -- Step 2: Email the Infrastructure Audit Report to the admin ---------------------
-                    // Jenkins Email Extension Plugin must be configured:
-                    //   Manage Jenkins -> Configure System -> Extended E-mail Notification
-                    //   Set SMTP server (e.g. smtp.gmail.com:587, TLS enabled)
-                    //   Add your Gmail App Password as a Jenkins credential
                     def riskLevel = ai_exit_code == 0 ? "LOW RISK" : ai_exit_code == 2 ? "REVIEW REQUIRED" : "ERROR"
+
+                    // Requires Jenkins Email Extension Plugin (smtp.gmail.com:587, TLS, App Password)
                     emailext(
-                        to: 'mayuchaudhari2004@gmail.com', // <- Admin email
+                        to: 'mayuchaudhari2004@gmail.com',
                         from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
                         subject: "[Jenkins] Infrastructure Audit Report - Build #${BUILD_ID} (${riskLevel})",
                         body: """
@@ -98,17 +90,16 @@ pipeline {
                         attachLog: false
                     )
 
+                    // exit code 1 = agent crash; 2 = REVIEW REQUIRED (non-blocking)
                     if (ai_exit_code == 1) {
                         error("AI Risk Gate encountered an error. Deployment blocked. Check the report.")
                     }
 
-                    // -- Step 3: Archive the report as a Jenkins artifact --------------
                     archiveArtifacts artifacts: 'audit-report/report.pdf', allowEmptyArchive: false
                 }
             }
         }
 
-        // -- Manual Approval Gate -------------------------------------------------
         stage('Manual Approval') {
             when {
                 expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
@@ -127,7 +118,6 @@ pipeline {
                         )
                         approvalUser = userInput['approver'] ?: "unknown"
                     } catch (err) {
-                        // Pipeline aborted by human
                         withCredentials([
                             string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
                             string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
@@ -138,7 +128,6 @@ pipeline {
                         error("Deployment rejected by human approver.")
                     }
 
-                    // If we reach here, it was approved.
                     withCredentials([
                         string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
                         string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
@@ -150,7 +139,6 @@ pipeline {
             }
         }
 
-
         stage('Deploy to Dev') {
             when {
                 expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
@@ -160,26 +148,23 @@ pipeline {
                     bat 'M:/tools/terraform.exe apply -auto-approve tfplan'
                 }
                 dir('ansible') {
-                    // 1. Copy ansible dir to native Linux filesystem to fix 777 world-writable permission errors
+                    // Ansible requires native Linux filesystem permissions (no 777 on Windows mounts)
                     bat 'wsl rm -rf /tmp/aws-infra'
                     bat 'wsl mkdir -p /tmp/aws-infra'
                     bat 'wsl cp -r . /tmp/aws-infra/ansible'
-                    
-                    // 2. Inject the Jenkins Secret Private Key into Linux (using the PRIV_KEY_FILE from env)
+
+                    // wslpath converts the Windows Jenkins secret file path to a Linux path
                     bat 'wsl mkdir -p ~/.ssh'
                     bat 'wsl bash -c "cp \\"$(wslpath \'%PRIV_KEY_FILE%\')\\" ~/.ssh/id_rsa"'
                     bat 'wsl chmod 600 ~/.ssh/id_rsa'
-                    
-                    // 3. Run ansible from Linux directly
+
                     bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
-                    
-                    // 4. (Phase 3) Write Ansible state back to Knowledge Graph
+
                     withCredentials([
                         string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI'),
                         string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER'),
                         string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')
                     ]) {
-                        // Hardcoding the update for the lab. In prod, you'd parse ansible JSON output.
                         bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
                         bat "set PYTHONPATH=..&& .\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
                     }
@@ -385,7 +370,7 @@ pipeline {
             steps {
                 script {
                     def approvalUser = "jenkins"
-                    // Production has a 4-hour timeout — longer than dev/staging
+                    // 4-hour window — enough time for an on-call review without leaving the gate open overnight
                     timeout(time: 4, unit: 'HOURS') {
                         try {
                             def userInput = input(
@@ -447,5 +432,5 @@ pipeline {
             }
         }
 
-     }
+    }
 }
