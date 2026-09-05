@@ -90,11 +90,13 @@ def finops_agent_node(state: PipelineState, llm) -> dict:
     raw_content = response.content.strip()
 
     # --- Parse structured output ---
+    import re
     try:
-        if raw_content.startswith("```"):
-            raw_content = raw_content.split("```")[1]
-            if raw_content.startswith("json"):
-                raw_content = raw_content[4:]
+        # Extract JSON block even if the LLM wraps it in markdown or adds prose
+        json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+        if json_match:
+            raw_content = json_match.group(0)
+            
         parsed = json.loads(raw_content)
         findings_list = parsed.get("findings", [])
         # Bug fix: coerce to float explicitly — LLM may emit a string like "unknown"

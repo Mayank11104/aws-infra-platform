@@ -122,12 +122,13 @@ def blast_radius_agent_node(state: PipelineState, llm) -> dict:
 
     response = llm.invoke(messages)
     raw_content = response.content.strip()
-
+    import re
     try:
-        if raw_content.startswith("```"):
-            raw_content = raw_content.split("```")[1]
-            if raw_content.startswith("json"):
-                raw_content = raw_content[4:]
+        # Extract JSON array even if the LLM wraps it in markdown or adds prose
+        json_match = re.search(r'\[.*\]', raw_content, re.DOTALL)
+        if json_match:
+            raw_content = json_match.group(0)
+            
         findings_list = json.loads(raw_content)
         # Normalize LLM vocabulary drift ("destroy" → "delete") on every finding.
         # This is the single enforcement point — routing logic must not trust LLM compliance.
