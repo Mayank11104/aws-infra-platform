@@ -156,12 +156,10 @@ pipeline {
                     bat 'wsl mkdir -p /tmp/aws-infra'
                     bat 'wsl cp -r . /tmp/aws-infra/ansible'
                     
-                    // 2. Inject the Jenkins Secret Private Key into Linux
-                    withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                        bat 'wsl mkdir -p ~/.ssh'
-                        bat 'wsl cp "%SSH_KEY%" ~/.ssh/id_rsa'
-                        bat 'wsl chmod 600 ~/.ssh/id_rsa'
-                    }
+                    // 2. Inject the Jenkins Secret Private Key into Linux (using the PRIV_KEY_FILE from env)
+                    bat 'wsl mkdir -p ~/.ssh'
+                    bat 'wsl bash -c "cp $(wslpath \'%PRIV_KEY_FILE%\') ~/.ssh/id_rsa"'
+                    bat 'wsl chmod 600 ~/.ssh/id_rsa'
                     
                     // 3. Run ansible from Linux using the wrapper script
                     bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ./run_ansible.sh"'
