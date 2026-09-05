@@ -7,3 +7,4 @@ boto3>=1.35.0
 pydantic>=2.7.0
 neo4j>=5.24.0
 markdown-pdf>=1.13.3
+checkov>=3.2.0       
