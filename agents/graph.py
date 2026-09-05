@@ -7,7 +7,7 @@ DESIGN PHILOSOPHY (simplified):
   It has NO interrupt/resume mechanism.
   It has NO SQLite checkpointer.
 
-  The graph runs to completion, produces a Risk Brief markdown file,
+  The graph runs to completion, produces an Infrastructure Audit Report markdown file,
   and exits. Jenkins handles ALL approval logic natively via its
   `input` step and Email Extension Plugin. The agents are purely
   advisory — they have zero involvement in the approve/reject decision.

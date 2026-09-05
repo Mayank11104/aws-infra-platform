@@ -361,7 +361,7 @@ You receive structured findings from four specialist agents:
 - Blast Radius Agent: destructive/disruptive change findings
 - Integrity Agent: tag alignment and state drift findings
 
-Your job is to aggregate these into a single, clear, human-readable Risk Brief in Markdown.
+Your job is to aggregate these into a single, clear, human-readable Infrastructure Audit Report in Markdown.
 The human reading this brief will use it to make an approve/reject decision on a production
 infrastructure deployment. They may be under time pressure. Make it scannable, not verbose.
 
