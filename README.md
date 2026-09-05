@@ -1,50 +1,115 @@
-# AWS Infrastructure Platform — Terraform + Ansible
+# IaC Sentinel Autopilot
 
-A production-grade Infrastructure as Code (IaC) setup provisioning a fully isolated, multi-environment AWS infrastructure using **Terraform modules** and **Ansible** for configuration management. Designed to demonstrate real-world DevOps discipline — not just "it works," but *why* each decision was made.
+> **AI-Powered Infrastructure Risk Gate for CI/CD Pipelines**
+> The Sentinel watches. You decide. The Autopilot executes.
+
+A production-grade Infrastructure as Code (IaC) platform that provisions a fully isolated, multi-environment AWS infrastructure using **Terraform** and **Ansible** — guarded by a **multi-agent AI system** that reviews every infrastructure change before a single resource is touched.
+
+The AI is a **reviewer, never a decision-maker**. It intercepts the CI/CD pipeline, analyzes the Terraform plan from four specialized angles (Security, Cost, Blast Radius, Integrity), generates a professional **Infrastructure Audit Report PDF**, and emails it to the administrator. The pipeline then waits for a human to approve or reject the deployment.
 
 ---
 
-## 📁 Project Structure
+## Architecture Overview
 
 ```
-Ansible+terraform/
+Developer Push (GitHub)
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    Jenkins CI/CD Pipeline                        │
+│                                                                  │
+│  1. Terraform Validate & Plan  ──► tfplan.json                  │
+│                                        │                         │
+│                              ┌─────────▼──────────┐             │
+│                              │  AI Sentinel Gate   │             │
+│                              │                     │             │
+│                              │  ┌──────────────┐  │             │
+│                              │  │ SecOps Agent │  │             │
+│                              │  │ FinOps Agent │  │  ◄ Neo4j   │
+│                              │  │ BlastRadius  │  │    Memory  │
+│                              │  │ Integrity    │  │             │
+│                              │  └──────┬───────┘  │             │
+│                              │         │           │             │
+│                              │  Synthesizer Node   │             │
+│                              │         │           │             │
+│                              │  Infrastructure     │             │
+│                              │  Audit Report PDF   │             │
+│                              └─────────┬───────────┘            │
+│                                        │                         │
+│                              📧 Email to Admin                   │
+│                                        │                         │
+│                         ┌──────────────▼──────────┐             │
+│                         │   Human Approval Gate    │             │
+│                         │   (Jenkins input step)   │             │
+│                         └──────────────┬────────────┘            │
+│                                        │                         │
+│  2. Terraform Apply    ◄───────────────┘                        │
+│  3. Ansible Configure (via WSL)                                  │
+│  4. Write state back to Neo4j Knowledge Graph                    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Project Structure
+
+```
+iac-sentinel-autopilot/
 │
-├── agents/                  # 🤖 AI Risk Gate (LangGraph + Neo4j) → See [agents/README.md](agents/README.md)
+├── agents/                  # AI Sentinel Gate (LangGraph + AWS Bedrock + Neo4j)
+│   ├── core/
+│   │   ├── ingestion.py     # Parses & tiers the Terraform plan JSON
+│   │   ├── state.py         # LangGraph PipelineState TypedDict
+│   │   └── memory/          # Neo4j Knowledge Graph client + reader/writer
+│   ├── nodes/
+│   │   ├── secops_agent.py      # Network & IAM security analysis
+│   │   ├── finops_agent.py      # Cost delta analysis (Infracost)
+│   │   ├── blast_radius_agent.py # Destructive change detection
+│   │   ├── integrity_agent.py   # Tag alignment & state drift
+│   │   └── synthesizer.py       # Fan-in: generates the Audit Report
+│   ├── graph.py             # LangGraph graph definition
+│   ├── prompts.py           # All agent system prompts
+│   ├── run_analysis.py      # CLI entrypoint — called by Jenkins
+│   ├── run_graph_update.py  # CLI entrypoint — writes results to Neo4j
+│   ├── requirements.txt
+│   └── README.md            # Deep dive into the AI architecture
 │
 ├── terraform/
 │   ├── bootstrap/
-│   │   └── s3_dyanamodb_creation/   # Phase 1: Create backend storage (local state)
-│   │
+│   │   └── s3_dynamodb_creation/  # Phase 1: Create backend storage (local state)
 │   ├── modules/
-│   │   ├── vpc/                     # VPC, subnet, IGW, route table
-│   │   ├── security-group/          # Firewall rules (SSH + HTTP)
-│   │   └── ec2/                     # Compute instance + SSH key pair
-│   │
+│   │   ├── vpc/                   # VPC, subnet, IGW, route table
+│   │   ├── security-group/        # Firewall rules (SSH + HTTP)
+│   │   └── ec2/                   # Compute instance + SSH key pair
 │   └── environments/
-│       ├── dev/                     # t3.micro — lowest cost, fast iteration
-│       ├── staging/                 # t3.small — mirrors prod shape
-│       └── prod/                    # t3.small — isolated blast radius
+│       ├── dev/                   # t3.micro — fast iteration
+│       ├── staging/               # t3.small — mirrors prod shape
+│       └── prod/                  # t3.small — isolated blast radius
 │
 ├── ansible/
 │   ├── inventory/
-│   │   ├── hosts.ini                # Static inventory (grouped by environment, git-ignored)
-│   │   └── aws_ec2.yml              # Dynamic inventory plugin config (future)
+│   │   └── aws_ec2.yml        # Dynamic inventory (AWS EC2 plugin)
 │   ├── roles/
-│   │   ├── docker/                  # Docker CE install + group config
-│   │   └── nginx/                   # Web server install + service
+│   │   ├── docker/            # Docker CE install + group config
+│   │   └── nginx/             # Web server install + service
 │   ├── playbooks/
-│   │   ├── server_update.yml        # Flat playbook — apt update + base packages
-│   │   └── install_services.yml     # Role-based playbook — Docker + Nginx
-│   └── ansible.cfg                  # Default user, key, inventory + roles path
+│   │   ├── server_update.yml  # Flat playbook — apt update + base packages
+│   │   └── install_services.yml # Role-based playbook — Docker + Nginx
+│   └── ansible.cfg            # Remote user, SSH key, inventory, roles path
 │
-├── ssh-keys/                        # SSH keys (git-ignored — never committed)
+├── ci/
+│   └── jenkins/
+│       └── Jenkinsfile        # Full CI/CD pipeline definition
+│
+├── ssh-keys/                  # SSH keys (git-ignored — never committed)
 ├── .gitignore
+├── CI_CD_TROUBLESHOOTING.md
 └── README.md
 ```
 
 ---
 
-## 🏗️ What We Built
+## Stage 1: Infrastructure Foundation
 
 ### Phase 1 — Bootstrap: S3 + DynamoDB
 
@@ -52,9 +117,10 @@ Before any environment infrastructure could be created, we first had to solve a 
 
 **Solution:** A dedicated `bootstrap/` folder with its own Terraform configuration that runs **once** with local state, creates the shared backend, and is never run again.
 
-What the bootstrap creates:
-- **S3 Bucket** — Stores all `terraform.tfstate` files for every environment securely in one place.
-- **DynamoDB Table** — Handles state locking. When someone runs `terraform apply`, it writes a lock to this table so no other run can execute at the same time, preventing state corruption.
+| Resource | Purpose |
+|---|---|
+| **S3 Bucket** | Stores all `terraform.tfstate` files for every environment |
+| **DynamoDB Table** | Handles state locking — prevents concurrent `apply` runs |
 
 ---
 
@@ -65,10 +131,8 @@ Instead of one monolithic `main.tf`, the infrastructure is broken into three **s
 | Module | What it creates |
 |---|---|
 | `vpc` | VPC, public subnet, internet gateway, route table |
-| `security-group` | Firewall rules — SSH (port 22) and HTTP (port 80) open to `0.0.0.0/0` |
+| `security-group` | Firewall rules — SSH (port 22) and HTTP (port 80) |
 | `ec2` | EC2 instance, SSH key pair, root EBS volume |
-
-Each module has its own `variables.tf` and `outputs.tf`. The outputs of one module feed directly into the inputs of the next. For example, the `vpc` module outputs a `subnet_id` which the `ec2` module receives as an input variable.
 
 ---
 
@@ -82,157 +146,19 @@ Three environments consume the shared modules by passing different variable valu
 | `staging` | `t3.small` | `10.1.0.0/16` | `env/staging/terraform.tfstate` |
 | `prod` | `t3.small` | `10.2.0.0/16` | `env/prod/terraform.tfstate` |
 
-Each environment has its own `backend.tf` pointing to a separate S3 key. This means destroying `dev` cannot ever touch `prod`'s state file.
-
 > **Why per-environment state files instead of Terraform Workspaces?**
-> Workspaces are convenient, but a `terraform workspace select prod && terraform apply` typo is a single command away from disaster. With separate backend keys, the only way to touch prod state is to be physically inside the `environments/prod/` directory. The isolation is **structural**, not reliant on the developer remembering which workspace is active.
-
-Each environment also outputs:
-- `environment_name` — the name of the environment
-- `ec2_public_ip` — the public IP of the provisioned instance
-- `ec2_instance_type` — the instance type used
+> With separate backend keys, the only way to touch prod state is to be physically inside the `environments/prod/` directory. The isolation is **structural**, not reliant on the developer remembering which workspace is active.
 
 ---
 
-### Phase 4 — SSH Key Management
+### Phase 4 — Ansible: Configuration Management
 
-SSH keys are stored inside the project under `ssh-keys/` and are committed to **neither** Git nor any public location.
+With infrastructure provisioned by Terraform, Ansible handles server configuration via the dynamic AWS EC2 inventory plugin (`aws_ec2.yml`). Tags applied by Terraform (`Environment=dev`, `Role=web`) are used directly as Ansible inventory groups.
 
-**`.gitignore` entries:**
-```
-ssh-keys/
-*.pem
-*.pub
-```
+The master playbook is clean and declarative:
 
-#### The WSL/Windows Permission Problem (and the fix)
-
-Using SSH keys stored on a Windows drive (`D:\`) from inside WSL required solving a real, non-trivial problem:
-
-- **The conflict:** Linux SSH requires strict `chmod 400` permissions on private keys. By default, WSL treats files on Windows-mounted drives (like `/mnt/d/`) as world-readable (`-rwxrwxrwx`) because Windows NTFS doesn't natively speak Linux permission numbers. SSH sees this as insecure and refuses to use the key.
-
-- **The fix:** WSL supports a `metadata` option that allows Linux permission commands to be stored inside a hidden field on Windows NTFS files. By creating `/etc/wsl.conf` with the following content and running `wsl --shutdown` to restart the engine, Linux permission commands like `chmod 400` work correctly on files inside `/mnt/d/`:
-
-```ini
-[automount]
-options = "metadata"
-```
-
-After restarting WSL, running `chmod 400 ssh-keys/aws-infra-key` set the correct `-r--------` permissions, and SSH accepted the key without issue.
-
----
-
-### Phase 5 — Ansible: From Ad-hoc to Roles
-
-With the infrastructure fully provisioned by Terraform, Ansible takes over for configuration management. The entire Ansible journey is documented here — from the very first ping to fully automated role-based deployments.
-
-#### Step 1: Inventory Setup
-
-We started by configuring a static inventory (`inventory/hosts.ini`) that organises all three environments into named groups:
-
-```ini
-[env_dev]
-<dev-ip>
-
-[env_staging]
-<staging-ip>
-
-[env_prod]
-<prod-ip>
-
-[role_web:children]
-env_dev
-env_staging
-env_prod
-```
-
-The `[role_web:children]` group is a **"Group of Groups"** — a parent group that automatically inherits all the IPs from the child groups. This means if any IP changes, it only needs to be updated in one place.
-
-The `ansible.cfg` file was configured so Ansible always uses the project-local inventory, not the system-wide `/etc/ansible/hosts`:
-
-```ini
-[defaults]
-inventory  = inventory/hosts.ini
-remote_user = ubuntu
-private_key_file = ../ssh-keys/aws-infra-key
-host_key_checking = False
-roles_path = roles
-```
-
-> **Why a project-local inventory instead of `/etc/ansible/hosts`?**
-> The default system file cannot be committed to Git and shared with teammates. Storing the inventory inside the project folder means anyone who clones the repository gets a fully working Ansible setup immediately.
-
-> **Why `roles_path = roles`?**
-> When playbooks live inside a `playbooks/` subfolder, Ansible looks for roles relative to that playbook's location (i.e., `playbooks/roles/`). Setting `roles_path = roles` in `ansible.cfg` tells Ansible to always look in the top-level `ansible/roles/` folder, regardless of where the playbook file lives.
-
-#### Step 2: Ad-hoc Commands (Learning and Verification)
-
-Before writing any playbooks, ad-hoc commands were used to verify connectivity and understand how Ansible modules work directly from the terminal:
-
-```bash
-ansible all -m ping           # Verified SSH connectivity to all 3 servers
-ansible env_dev -m ping       # Targeted a single environment
-ansible all -m command -a "uptime"   # Checked server uptime
-```
-
-All three environments (dev, staging, prod) returned `pong` successfully.
-
----
-
-#### Step 3: First Playbook — Flat Structure
-
-The first playbook was written intentionally as a **flat playbook** (no roles) to understand the raw mechanics before adding any abstraction. The goal was simple: update all servers and install basic utilities.
-
-**`playbooks/server_update.yml`:**
 ```yaml
-- name: Server Initialisation and Update
-  hosts: all
-  become: yes
-
-  tasks:
-    - name: Update apt cache and upgrade all packages
-      apt:
-        update_cache: yes
-        upgrade: dist
-        cache_valid_time: 3600
-
-    - name: Install basic troubleshooting utilities
-      apt:
-        name:
-          - curl
-          - git
-          - vim
-          - htop
-        state: present
-```
-
-**Result:**
-```
-TASK [Update apt cache and upgrade all packages] → changed (on all 3)
-TASK [Install basic troubleshooting utilities]  → ok (already installed — idempotency in action)
-```
-
-**Key lesson observed:** The `ok` status on the utilities task demonstrated **idempotency** — Ansible checked the servers, found the packages were already installed (pre-installed on the Ubuntu AMI), and did nothing rather than wastefully reinstalling them.
-
----
-
-#### Step 4: Moving to Roles (Production Structure)
-
-After understanding flat playbooks, we rebuilt the Ansible configuration using **Roles** — the industry-standard approach for organising reusable configuration code.
-
-**Why Roles over multiple flat playbooks?**
-
-| Multiple Flat Playbooks | Roles |
-|---|---|
-| Run 10 `ansible-playbook` commands to set up a new server | One master playbook, one command |
-| Code is scattered across many files | All Docker code lives in `roles/docker/`, all Nginx code in `roles/nginx/` |
-| Can't be shared or reused across projects | Copy the `roles/docker/` folder to any new project and it works instantly |
-| No access to Ansible Galaxy | Can install community roles: `ansible-galaxy install geerlingguy.docker` |
-
-The master playbook became beautifully clean:
-
-**`playbooks/install_services.yml`:**
-```yaml
+# playbooks/install_services.yml
 - name: Install Docker and Nginx using Roles
   hosts: role_web
   become: yes
@@ -243,159 +169,69 @@ The master playbook became beautifully clean:
 
 ---
 
-#### Step 5: Errors Faced and How They Were Fixed
+## Stage 2: The AI Sentinel Gate
 
-The path to a working deployment involved four real-world bugs, each teaching a valuable lesson.
+### How the AI Gate Works
 
----
+The `AI Risk Gate` stage in Jenkins intercepts the pipeline between `plan` and `apply`:
 
-**Bug #0 — SSH Key Permission Denied on WSL**
+1. **Ingestion:** The raw `tfplan.json` is parsed and filtered. No-op resources are dropped, and changes are tiered (`CRITICAL`, `HIGH`, `NORMAL`) based on resource type.
+2. **Parallel Agent Analysis:** Four domain-expert AI agents analyze the plan simultaneously using **AWS Bedrock (Claude)** via **LangGraph**.
+3. **Graph Enrichment:** Each agent queries the **Neo4j Knowledge Graph** for historical context — previous runs, past human approvals, and cost baselines.
+4. **Synthesis:** A Synthesizer node aggregates all findings into a professionally formatted **Infrastructure Audit Report**.
+5. **PDF Generation:** The report is converted to a PDF and emailed to the administrator.
+6. **Human Gate:** Jenkins pauses and waits for the administrator to Approve or Abort from the email link.
+7. **State Persistence:** Post-deployment, the result is written back to Neo4j, making the AI smarter on the next run.
 
-```
-Warning: Unprotected private key file!
-Permissions 0777 for 'ssh-keys/aws-infra-key' are too open.
-It is required that your private key files are NOT accessible by others.
-```
+| Agent | Domain | External Grounding |
+|---|---|---|
+| SecOps | Network & IAM security | `checkov`, `tfsec` |
+| FinOps | Cloud cost deltas | `infracost` |
+| Blast Radius | Destructive operations & downtime | Terraform action types |
+| Integrity | Tag alignment & state drift | Ansible inventory, git diff |
 
-**Root Cause:** The SSH private key was stored on the Windows drive (`D:\`) and accessed from WSL via `/mnt/d/`. By default, WSL mounts Windows drives without Linux permission metadata — every file appears as `-rwxrwxrwx` (world-readable, 777). Linux SSH refuses to use any key that isn't strictly locked down to the owner only (`chmod 400`). Running `chmod 400` appeared to work but the permissions would revert, because the NTFS filesystem had nowhere to store Linux permission bits.
-
-**Fix:** WSL supports a `metadata` mount option that stores Linux permission data inside a hidden NTFS extended attribute on each file. Adding the following to `/etc/wsl.conf` and restarting WSL with `wsl --shutdown` enabled `chmod` to work permanently on Windows-mounted drives:
-
-```ini
-[automount]
-options = "metadata"
-```
-
-After restart, `chmod 400 ssh-keys/aws-infra-key` set the correct `-r--------` permissions and SSH accepted the key without issue.
+*(For a deep dive into the AI architecture, see [agents/README.md](agents/README.md))*
 
 ---
 
-**Bug #1 — Role Not Found**
+## Jenkins Pipeline Stages
 
-```
-ERROR! the role 'docker' was not found in
-/ansible/playbooks/roles:/home/spydy/.ansible/roles...
-```
-
-**Root Cause:** Because we organised playbooks inside a `playbooks/` subfolder, Ansible searched for roles at `playbooks/roles/docker` instead of `ansible/roles/docker`.
-
-**Fix:** Added `roles_path = roles` to `ansible.cfg`. This tells Ansible to always resolve roles relative to the `ansible.cfg` file's location, not the playbook's location.
-
----
-
-**Bug #2 — `apt-key` Not Found**
-
-```
-FAILED! => {"msg": "Failed to find required executable 'apt-key'..."}
-```
-
-**Root Cause:** The original Docker role used `apt_key` (the old way to add GPG keys). Modern Ubuntu (22.04+) has completely removed the `apt-key` command as it was deemed insecure. Our EC2 instances were running a newer Ubuntu AMI, so the command no longer existed on the server.
-
-**Fix:** Replaced `apt_key` with the modern **keyring approach** — creating a secure `/etc/apt/keyrings/` directory and downloading Docker's GPG key directly into it:
-
-```yaml
-- name: Create directory for Docker GPG key
-  file:
-    path: /etc/apt/keyrings
-    state: directory
-    mode: '0755'
-
-- name: Add Docker official GPG key using curl
-  command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  args:
-    creates: /etc/apt/keyrings/docker.asc
-```
-
-The repository string was also updated to reference the new key location:
-```
-deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://...
-```
+| Stage | What happens |
+|---|---|
+| `Terraform Validate` | Syntax check without connecting to AWS |
+| `Terraform Plan (Dev)` | Full init, plan, and JSON export |
+| `AI Risk Gate` | 4 AI agents analyze, Audit Report PDF emailed |
+| `Manual Approval` | Admin reviews PDF and approves/rejects in Jenkins |
+| `Deploy to Dev` | `terraform apply`, then Ansible via WSL |
 
 ---
 
-**Bug #3 — `get_url` Python SSL Bug**
-
-```
-FAILED! => {"msg": "An unknown error occurred: 'CustomHTTPSConnection'
-object has no attribute 'cert_file'"}
-```
-
-**Root Cause:** The `get_url` Ansible module internally uses Python's `urllib` library to make HTTPS requests. There is a known compatibility bug between a specific version of Python and certain versions of the `urllib3` library where the `cert_file` attribute is missing. This is an Ansible control-node bug — nothing wrong with the servers or our code.
-
-**Fix:** Bypassed the buggy Ansible module entirely and used the `command` module to run raw `curl` instead. The `creates:` argument was added to keep the task idempotent (skip if the file already exists):
-
-```yaml
-- name: Add Docker official GPG key using curl (bypassing Ansible Python bug)
-  command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  args:
-    creates: /etc/apt/keyrings/docker.asc
-```
-
----
-
-#### Final Result ✅
-
-After all fixes, the playbook ran cleanly across all three environments:
-
-```
-PLAY RECAP
-13.203.73.243  : ok=11  changed=5  unreachable=0  failed=0
-13.232.74.58   : ok=11  changed=5  unreachable=0  failed=0
-15.206.189.32  : ok=11  changed=5  unreachable=0  failed=0
-```
-
-All three servers now have:
-- ✅ Docker CE (latest) installed and running
-- ✅ Docker service enabled on boot
-- ✅ `ubuntu` user added to the `docker` group
-- ✅ Nginx installed and running (verified by opening the server's IP in a browser)
-
----
-
-### Phase 6 — The AI Infrastructure Risk Gate (Jenkins CI/CD)
-
-The final piece of the platform is a fully automated, intelligent CI/CD pipeline built in **Jenkins**. Instead of relying purely on static analysis tools and human reviewers, we built a **Multi-Agent AI Gatekeeper** to autonomously review infrastructure changes before deployment.
-
-When a pull request or deployment triggers the pipeline:
-1. Jenkins runs `terraform plan` and generates a JSON output.
-2. The pipeline invokes a specialized Python application running **LangGraph** and **AWS Bedrock (Mistral 7B)**.
-3. **Four Parallel Agents** analyze the plan:
-   - **SecOps Agent**: Checks IAM and network security (grounded by `checkov` and `tfsec`).
-   - **FinOps Agent**: Analyzes cost spikes (grounded by `infracost`).
-   - **Blast Radius Agent**: Detects stateful resource destruction and downtime risks.
-   - **Integrity Agent**: Ensures Ansible tags (`Role`, `Environment`) are correctly applied.
-4. A **Synthesizer Agent** aggregates the findings into a highly detailed **Markdown Risk Brief**.
-5. The pipeline pauses, emails the Risk Brief to the administrator (using a custom Gmail SMTP integration), and waits for manual approval.
-6. A **Neo4j Knowledge Graph** acts as the system's long-term memory, storing the history of every resource, agent finding, and human approval to prevent alert fatigue on future runs.
-
-*(For a deep dive into the AI architecture, prompt engineering, and Neo4j graph schemas, see the dedicated [Agents README](agents/README.md).)*
-
----
-
-## 🚀 Roadmap
-
-- [x] Create Ansible playbooks and roles for configuration management (Nginx, Docker)
-- [x] Jenkins CI/CD Pipeline — Terraform lint → plan → apply
-- [x] Integrate `checkov` and `infracost` as static analysis gates
-- [x] Build LangGraph Multi-Agent AI Gatekeeper for autonomous PR review
-- [x] Implement Neo4j Knowledge Graph memory core
-- [ ] Expand VPC module to support 2 AZs and wire in the ALB module
-
----
-
-## 🔑 Key Design Decisions
+## Key Design Decisions
 
 | Decision | Why |
 |---|---|
+| AI is reviewer only | Keeps humans in control. The AI advises, never acts. |
 | Per-environment state files over Workspaces | Structural isolation — impossible to accidentally apply to the wrong environment |
-| Bootstrap folder with local state | Solves the "who creates the S3 bucket?" chicken-and-egg problem cleanly |
-| SSH keys in `ssh-keys/` + `.gitignore` | Keeps secrets out of version control completely |
-| WSL metadata for key permissions | Required to enforce strict Linux `chmod 400` on Windows-mounted NTFS drives |
-| Static `hosts.ini` for Ansible inventory | Simpler to understand and debug while learning; dynamic inventory (`aws_ec2.yml`) prepared for CI/CD |
-| Flat playbook first, then roles | Understanding raw task execution before adding abstraction layers builds real knowledge |
-| `docker-ce` over `docker.io` | `docker-ce` is the latest, official Docker release; `docker.io` is maintained by Ubuntu and lags months behind |
-| `curl` over `get_url` for GPG key | Bypassed a known Python/urllib SSL bug in the specific Ansible version on the control node |
-| `roles_path` in `ansible.cfg` | Prevents role resolution errors when playbooks are organised inside a `playbooks/` subfolder |
-| Multi-Agent Architecture (LangGraph) | A single monolithic LLM prompt fails on complex Terraform plans. Distributed agents (FinOps, SecOps) improve focus and reduce hallucinations. |
-| Neo4j Knowledge Graph Memory | Prevents AI "alert fatigue" by remembering if a human administrator previously approved a specific security or cost warning. |
-| Dynamic Jenkins Email Integration | Admins shouldn't have to log into Jenkins to read logs. The AI sends beautifully formatted Markdown briefs directly to their inbox with a one-click approval link. |
+| Bootstrap folder with local state | Solves the "who creates the S3 bucket?" chicken-and-egg problem |
+| LangGraph multi-agent architecture | Parallel specialized agents outperform a single monolithic prompt |
+| Neo4j Knowledge Graph memory | Prevents alert fatigue — if a human approved a risk once, the AI remembers |
+| PDF over Markdown for reports | Standardized, professional format suitable for audit trails |
+| Dynamic EC2 inventory (aws_ec2.yml) | No hardcoded IPs — the pipeline discovers instances by their AWS Tags |
+| WSL for Ansible on Windows Jenkins | Allows Linux-native Ansible tooling on a Windows-hosted Jenkins server |
+| `curl` over `get_url` for Docker GPG | Bypassed a known Python/urllib SSL bug in the specific Ansible/urllib3 version |
+
+---
+
+## Roadmap
+
+- [x] S3 + DynamoDB remote state backend
+- [x] Reusable Terraform modules (VPC, SG, EC2)
+- [x] Multi-environment isolation (dev/staging/prod)
+- [x] Dynamic Ansible inventory via AWS EC2 plugin
+- [x] Ansible roles for Docker CE and Nginx
+- [x] Jenkins CI/CD Pipeline (validate → plan → gate → apply → configure)
+- [x] LangGraph multi-agent AI Risk Gate
+- [x] Neo4j Knowledge Graph memory core
+- [x] Infrastructure Audit Report PDF generation and email delivery
+- [ ] Staging and Production pipeline stages
+- [ ] ALB module + multi-AZ VPC expansion
