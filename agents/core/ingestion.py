@@ -182,8 +182,8 @@ def normalize_resource_change(rc: dict) -> ResourceChange:
         before=before,
         after=after,
         changed_attributes=changed_attrs,
-        tags_before=before.get("tags", {}),
-        tags_after=after.get("tags", {}),
+        tags_before=before.get("tags") or {},
+        tags_after=after.get("tags") or {},
         risk_tier=_classify_risk_tier(action, resource_type),
     )
 
