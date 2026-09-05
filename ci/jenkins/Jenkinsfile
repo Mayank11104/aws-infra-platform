@@ -15,6 +15,9 @@ pipeline {
         
         // Pass AWS credentials from Windows into WSL Linux automatically!
         WSLENV = 'AWS_ACCESS_KEY_ID/u:AWS_SECRET_ACCESS_KEY/u:AWS_DEFAULT_REGION/u'
+        
+        // Force Python to use UTF-8 encoding for console output to prevent emoji crash
+        PYTHONIOENCODING = 'utf-8'
     }
 
     stages {
