@@ -1,0 +1,8 @@
+# LangGraph AI Risk Gate — Dependencies
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-aws>=0.2.0
+langchain-core>=0.3.0
+boto3>=1.35.0
+pydantic>=2.7.0
+neo4j>=5.24.0

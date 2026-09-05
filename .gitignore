@@ -45,6 +45,16 @@ terraform.rc
 # Ignored documents
 PRD (3).md
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Local Testing
+mock_tfplan.json
+risk-brief/
+
 # Ignore SSH keys stored in project folder
 ssh-keys/
 *.pem
@@ -52,4 +62,8 @@ ssh-keys/
 
 # Ignore static Ansible inventory (contains real server IPs)
 ansible/inventory/hosts.ini
-scripts/  
+
+# Ignore local troubleshooting logs
+CI_CD_TROUBLESHOOTING.md
+venv/*
+risk-brief/

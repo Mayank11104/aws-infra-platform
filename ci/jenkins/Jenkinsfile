@@ -35,9 +35,104 @@ pipeline {
                     bat 'M:/tools/terraform.exe init'
                     bat 'M:/tools/terraform.exe plan -var-file="%TF_VARS_FILE%" -var="public_key_path=%PUB_KEY_FILE%" -out=tfplan'
                     bat 'M:/tools/terraform.exe show -no-color tfplan > tfplan.txt'
+                    // IMPORTANT: Generate JSON for the AI Risk Gate
+                    bat 'M:/tools/terraform.exe show -json tfplan > tfplan.json'
                 }
             }
         }
+
+        stage('AI Risk Gate') {
+            steps {
+                script {
+                    def ai_exit_code = 0
+
+                    // ── Step 1: Run the AI agents (Account B + Neo4j) ──────────
+                    withCredentials([
+                        [string(credentialsId: 'bedrock-access-key', variable: 'BEDROCK_AWS_ACCESS_KEY_ID')],
+                        [string(credentialsId: 'bedrock-secret-key', variable: 'BEDROCK_AWS_SECRET_ACCESS_KEY')],
+                        [string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI')],
+                        [string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER')],
+                        [string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')]
+                    ]) {
+                        // Agents run, enrich with Neo4j history, generate risk-brief/report.md, save to graph, then exit.
+                        ai_exit_code = bat(
+                            script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/dev/tfplan.json --env dev --run-id %BUILD_ID%',
+                            returnStatus: true
+                        )
+                    }
+
+                    // ── Step 2: Email the Risk Brief to the admin ─────────────────────
+                    // Jenkins Email Extension Plugin must be configured:
+                    //   Manage Jenkins → Configure System → Extended E-mail Notification
+                    //   Set SMTP server (e.g. smtp.gmail.com:587, TLS enabled)
+                    //   Add your Gmail App Password as a Jenkins credential
+                    def riskLevel = ai_exit_code == 0 ? "🟢 LOW RISK" : ai_exit_code == 2 ? "🔴 REVIEW REQUIRED" : "❌ ERROR"
+                    emailext(
+                        to: 'admin@yourdomain.com', // ← Change to your admin email
+                        subject: "[Jenkins] AI Risk Brief — Build #${BUILD_ID} (${riskLevel})",
+                        body: """
+                            <h2>AI Infrastructure Risk Brief</h2>
+                            <p><b>Pipeline:</b> ${JOB_NAME} #${BUILD_ID}</p>
+                            <p><b>AI Recommendation:</b> ${riskLevel}</p>
+                            <p>The full Risk Brief is attached. Please review it and then either
+                            <b>Approve</b> or <b>Abort</b> the pipeline from the Jenkins UI:</p>
+                            <p><a href="${BUILD_URL}input">${BUILD_URL}input</a></p>
+                            <p><i>The agents are advisory only — you make the final decision.</i></p>
+                        """,
+                        mimeType: 'text/html',
+                        attachmentsPattern: 'risk-brief/report.md',
+                        attachLog: false
+                    )
+
+                    if (ai_exit_code == 1) {
+                        error("AI Risk Gate encountered an error. Deployment blocked. Check the report.")
+                    }
+
+                    // ── Step 3: Archive the report as a Jenkins artifact ──────────────
+                    archiveArtifacts artifacts: 'risk-brief/report.md', allowEmptyArchive: false
+                }
+            }
+        }
+
+        // ── Manual Approval Gate ─────────────────────────────────────────────────
+        stage('Manual Approval') {
+            steps {
+                script {
+                    def approvalUser = "jenkins"
+                    try {
+                        def userInput = input(
+                            message: "📋 AI Risk Brief has been emailed to you. Review it and decide:",
+                            ok: "✅ Approved — Proceed to Apply",
+                            submitterParameter: 'approver',
+                            parameters: [
+                                text(name: 'APPROVAL_REASON', defaultValue: '', description: 'Optional: Why are you approving this?')
+                            ]
+                        )
+                        approvalUser = userInput['approver'] ?: "unknown"
+                    } catch (err) {
+                        // Pipeline aborted by human
+                        withCredentials([
+                            [string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI')],
+                            [string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER')],
+                            [string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')]
+                        ]) {
+                            bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision rejected --user unknown"
+                        }
+                        error("Deployment rejected by human approver.")
+                    }
+
+                    // If we reach here, it was approved.
+                    withCredentials([
+                        [string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI')],
+                        [string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER')],
+                        [string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')]
+                    ]) {
+                        bat ".\\venv\\Scripts\\python -m agents.run_graph_update --action approval --run-id %BUILD_ID% --decision approved --user ${approvalUser}"
+                    }
+                }
+            }
+        }
+
 
         stage('Deploy to Dev') {
             when {
@@ -52,14 +147,26 @@ pipeline {
                     bat 'wsl rm -rf /tmp/aws-infra'
                     bat 'wsl cp -r ../ /tmp/aws-infra'
                     
-                    // 2. Inject the Jenkins Secret Private Key into Linux (it wasn't in GitHub!)
-                    bat 'wsl mkdir -p /tmp/aws-infra/ssh-keys'
-                    bat 'wsl bash -c "cp $(wslpath \'%PRIV_KEY_FILE%\') /tmp/aws-infra/ssh-keys/aws-infra-key"'
-                    bat 'wsl chmod 400 /tmp/aws-infra/ssh-keys/aws-infra-key'
+                    // 2. Inject the Jenkins Secret Private Key into Linux
+                    withCredentials([sshUserPrivateKey(credentialsId: 'ansible-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                        bat 'wsl mkdir -p ~/.ssh'
+                        bat 'wsl cp "%SSH_KEY%" ~/.ssh/id_rsa'
+                        bat 'wsl chmod 600 ~/.ssh/id_rsa'
+                    }
                     
-                    // 3. Run Ansible from inside the native Linux filesystem
-                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/server_update.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
-                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
+                    // 3. Run ansible from Linux using the wrapper script
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ./run_ansible.sh"'
+                    
+                    // 4. (Phase 3) Write Ansible state back to Knowledge Graph
+                    withCredentials([
+                        [string(credentialsId: 'neo4j-uri', variable: 'NEO4J_URI')],
+                        [string(credentialsId: 'neo4j-user', variable: 'NEO4J_USER')],
+                        [string(credentialsId: 'neo4j-password', variable: 'NEO4J_PASSWORD')]
+                    ]) {
+                        // Hardcoding the update for the lab. In prod, you'd parse ansible JSON output.
+                        bat ".\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role nginx --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                        bat ".\\..\\venv\\Scripts\\python -m agents.run_graph_update --action ansible --env dev --run-id %BUILD_ID% --playbook install_services.yml --role docker --host-group tag_Role_web --addresses module.ec2.aws_instance.web[0]"
+                    }
                 }
             }
         }
