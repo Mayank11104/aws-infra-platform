@@ -11,43 +11,7 @@ The AI is a **reviewer, never a decision-maker**. It intercepts the CI/CD pipeli
 
 ## Architecture Overview
 
-```text
-Developer Push (GitHub)
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    Jenkins CI/CD Pipeline                        │
-│                                                                  │
-│  1. Terraform Validate & Plan  ──► tfplan.json                  │
-│                                        │                         │
-│                              ┌─────────▼──────────┐             │
-│                              │  AI Sentinel Gate   │             │
-│                              │                     │             │
-│                              │  ┌──────────────┐  │             │
-│                              │  │ SecOps Agent │  │             │
-│                              │  │ FinOps Agent │  │  ◄ Neo4j   │
-│                              │  │ BlastRadius  │  │    Memory  │
-│                              │  │ Integrity    │  │             │
-│                              │  └──────┬───────┘  │             │
-│                              │         │           │             │
-│                              │  Synthesizer Node   │             │
-│                              │         │           │             │
-│                              │  Infrastructure     │             │
-│                              │  Audit Report PDF   │             │
-│                              └─────────┬───────────┘            │
-│                                        │                         │
-│                              📧 Email to Admin                   │
-│                                        │                         │
-│                         ┌──────────────▼──────────┐             │
-│                         │   Human Approval Gate    │             │
-│                         │   (Jenkins input step)   │             │
-│                         └──────────────┬────────────┘            │
-│                                        │                         │
-│  2. Terraform Apply    ◄───────────────┘                        │
-│  3. Ansible Configure (via WSL)                                  │
-│  4. Write state back to Neo4j Knowledge Graph                    │
-└──────────────────────────────────────────────────────────────────┘
-```
+![IaC Sentinel Autopilot — Architecture Diagram](docs/images/architecture.jpg)
 
 ---
 
