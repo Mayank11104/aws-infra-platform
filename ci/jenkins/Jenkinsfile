@@ -33,6 +33,9 @@ pipeline {
         }
 
         stage('Terraform Plan (Dev)') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
+            }
             steps {
                 dir('terraform/environments/dev') {
                     bat 'M:/tools/terraform.exe init'
@@ -45,6 +48,9 @@ pipeline {
         }
 
         stage('AI Risk Gate') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
+            }
             steps {
                 script {
                     def ai_exit_code = 0
@@ -104,6 +110,9 @@ pipeline {
 
         // -- Manual Approval Gate -------------------------------------------------
         stage('Manual Approval') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/dev' || env.GIT_BRANCH == 'dev' }
+            }
             steps {
                 script {
                     def approvalUser = "jenkins"
