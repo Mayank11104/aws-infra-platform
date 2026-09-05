@@ -139,8 +139,8 @@ class PipelineState(TypedDict):
     # Synthesis output — written by Synthesizer after fan-in
     # ------------------------------------------------------------------
     overall_risk: RiskLevel | None
-    risk_brief_markdown: str | None
-    risk_brief_slack_blocks: list[dict] | None
+    audit_report_markdown: str | None
+    audit_report_slack_blocks: list[dict] | None
 
     # ------------------------------------------------------------------
     # Gate decision — written by risk_gate node

@@ -12,7 +12,7 @@ Exit codes (read by Jenkins Jenkinsfile):
 IMPORTANT: The agents NEVER approve or reject a deployment.
 The only job of this script is to:
   1. Run the 4 AI agents
-  2. Generate a Risk Brief markdown file
+  2. Generate a Infrastructure Audit Report markdown file
   3. Exit with a code that Jenkins uses to decide whether to show its approval button
 
 Jenkins handles approval via its native `input` step.
@@ -67,8 +67,8 @@ def main():
         integrity_finding=None,
         messages=[],
         overall_risk=None,
-        risk_brief_markdown=None,
-        risk_brief_slack_blocks=None,
+        audit_report_markdown=None,
+        audit_report_slack_blocks=None,
         requires_human_approval=False,
         auto_approved=False,
         human_decision=None,
@@ -79,11 +79,11 @@ def main():
         # Run the graph to completion — no pausing, no resuming
         final_state = graph.invoke(initial_state)
 
-        # Write Risk Brief to disk — Jenkins will archive this and email it
-        report_path = "risk-brief/report.md"
-        pdf_path = "risk-brief/report.pdf"
-        os.makedirs("risk-brief", exist_ok=True)
-        brief = final_state.get("risk_brief_markdown", "_No report generated._")
+        # Write Infrastructure Audit Report to disk — Jenkins will archive this and email it
+        report_path = "audit-report/report.md"
+        pdf_path = "audit-report/report.pdf"
+        os.makedirs("audit-report", exist_ok=True)
+        brief = final_state.get("audit_report_markdown", "_No report generated._")
         
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(brief)
@@ -93,11 +93,11 @@ def main():
             pdf = MarkdownPdf(toc_level=0)
             pdf.add_section(Section(brief))
             pdf.save(pdf_path)
-            print(f"\n📄 Risk Brief PDF generated: {pdf_path}")
+            print(f"\n📄 Infrastructure Audit Report PDF generated: {pdf_path}")
         except Exception as e:
             print(f"\n⚠️ Failed to generate PDF: {e}")
 
-        print(f"📄 Risk Brief Markdown written to: {report_path}")
+        print(f"📄 Infrastructure Audit Report Markdown written to: {report_path}")
 
         # ── Phase 3: Write to Knowledge Graph ──────────────────────────────
         # Only write to graph if graph is available. The agents are advisory,
@@ -128,8 +128,8 @@ def main():
         import traceback
         traceback.print_exc()
         # Write a minimal error report so Jenkins still has an artifact to publish
-        os.makedirs("risk-brief", exist_ok=True)
-        with open("risk-brief/report.md", "w", encoding="utf-8") as f:
+        os.makedirs("audit-report", exist_ok=True)
+        with open("audit-report/report.md", "w", encoding="utf-8") as f:
             f.write(f"# ❌ AI Risk Gate Error\n\n```\n{traceback.format_exc()}\n```\n\n"
                     f"**The AI Risk Gate failed. Human review is required before proceeding.**")
         sys.exit(1)

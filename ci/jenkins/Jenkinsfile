@@ -61,14 +61,14 @@ pipeline {
                         bat 'if not exist venv\\Scripts\\python.exe python -m venv venv'
                         bat '.\\venv\\Scripts\\pip install -r agents/requirements.txt'
 
-                        // Agents run, enrich with Neo4j history, generate risk-brief/report.md, save to graph, then exit.
+                        // Agents run, enrich with Neo4j history, generate audit-report/report.md, save to graph, then exit.
                         ai_exit_code = bat(
                             script: '.\\venv\\Scripts\\python -m agents.run_analysis --tfplan-json terraform/environments/dev/tfplan.json --env dev --run-id %BUILD_ID%',
                             returnStatus: true
                         )
                     }
 
-                    // -- Step 2: Email the Risk Brief to the admin ---------------------
+                    // -- Step 2: Email the Infrastructure Audit Report to the admin ---------------------
                     // Jenkins Email Extension Plugin must be configured:
                     //   Manage Jenkins -> Configure System -> Extended E-mail Notification
                     //   Set SMTP server (e.g. smtp.gmail.com:587, TLS enabled)
@@ -77,18 +77,18 @@ pipeline {
                     emailext(
                         to: 'mayuchaudhari2004@gmail.com', // <- Admin email
                         from: 'AI Risk Gate <mayuchaudhari2004@gmail.com>',
-                        subject: "[Jenkins] AI Risk Brief - Build #${BUILD_ID} (${riskLevel})",
+                        subject: "[Jenkins] Infrastructure Audit Report - Build #${BUILD_ID} (${riskLevel})",
                         body: """
-                            <h2>AI Infrastructure Risk Brief</h2>
+                            <h2>Infrastructure Audit Report</h2>
                             <p><b>Pipeline:</b> ${JOB_NAME} #${BUILD_ID}</p>
                             <p><b>AI Recommendation:</b> ${riskLevel}</p>
-                            <p>The full Risk Brief is attached. Please review it and then either
+                            <p>The full Audit Report is attached. Please review it and then either
                             <b>Approve</b> or <b>Abort</b> the pipeline from the Jenkins UI:</p>
                             <p><a href="${BUILD_URL}input">${BUILD_URL}input</a></p>
                             <p><i>The agents are advisory only - you make the final decision.</i></p>
                         """,
                         mimeType: 'text/html',
-                        attachmentsPattern: 'risk-brief/report.pdf',
+                        attachmentsPattern: 'audit-report/report.pdf',
                         attachLog: false
                     )
 
@@ -97,7 +97,7 @@ pipeline {
                     }
 
                     // -- Step 3: Archive the report as a Jenkins artifact --------------
-                    archiveArtifacts artifacts: 'risk-brief/report.pdf', allowEmptyArchive: false
+                    archiveArtifacts artifacts: 'audit-report/report.pdf', allowEmptyArchive: false
                 }
             }
         }
@@ -109,7 +109,7 @@ pipeline {
                     def approvalUser = "jenkins"
                     try {
                         def userInput = input(
-                            message: "AI Risk Brief has been emailed to you. Review it and decide:",
+                            message: "Infrastructure Audit Report has been emailed to you. Review it and decide:",
                             ok: "Approved - Proceed to Apply",
                             submitterParameter: 'approver',
                             parameters: [

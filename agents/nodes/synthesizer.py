@@ -3,7 +3,7 @@ nodes/synthesizer.py — The Synthesizer Agent Node.
 
 This is the final aggregation node. It runs AFTER all four domain agents complete (fan-in).
 It receives structured findings from SecOps, FinOps, BlastRadius, and Integrity agents
-and produces the final human-readable Risk Brief in Markdown.
+and produces the final human-readable Infrastructure Audit Report in Markdown.
 
 Strict rules:
   - Only reports what the four agents returned — never invents findings
@@ -81,11 +81,11 @@ def _build_findings_summary(findings: list[dict], max_items: int = 5) -> str:
 
 def synthesizer_node(state: PipelineState, llm) -> dict:
     """
-    Synthesizer — aggregates all four agent findings into the final Risk Brief.
+    Synthesizer — aggregates all four agent findings into the final Infrastructure Audit Report.
     Uses the LLM to write the narrative sections, but the structure and data
     are dictated by the agent findings (not invented by the LLM).
     """
-    print("📋  Synthesizer: Building Risk Brief...")
+    print("📋  Synthesizer: Building Infrastructure Audit Report...")
 
     secops = state.get("secops_finding")
     finops = state.get("finops_finding")
@@ -137,7 +137,7 @@ def synthesizer_node(state: PipelineState, llm) -> dict:
     messages = [
         SystemMessage(content=SYNTHESIZER_SYSTEM_PROMPT),
         HumanMessage(content=(
-            f"Generate the Risk Brief for pipeline run `{pipeline_run_id}` "
+            f"Generate the Infrastructure Audit Report for pipeline run `{pipeline_run_id}` "
             f"triggered by `{triggered_by}` targeting `{environment.upper()}`.\n\n"
             f"Agent findings:\n{json.dumps(agent_summary, indent=2, default=str)}"
         )),
@@ -168,7 +168,7 @@ def synthesizer_node(state: PipelineState, llm) -> dict:
         )
 
     header = (
-        f"# AI Risk Gate Brief: `{environment.upper()}` Environment\n\n"
+        f"# Infrastructure Audit Report: `{environment.upper()}` Environment\n\n"
         f"**Run ID:** `{pipeline_run_id}` | **Triggered by:** `{triggered_by}`\n"
         f"**Overall Risk:** {RISK_EMOJI[overall_risk]} {overall_risk.value.upper()}\n"
         f"{graph_section}\n"
@@ -246,7 +246,7 @@ def synthesizer_node(state: PipelineState, llm) -> dict:
 
     return {
         "overall_risk": overall_risk,
-        "risk_brief_markdown": full_brief,
-        "risk_brief_slack_blocks": slack_blocks,
-        "messages": [{"role": "synthesizer", "content": f"Brief generated. Risk: {overall_risk.value}"}],
+        "audit_report_markdown": full_brief,
+        "audit_report_slack_blocks": slack_blocks,
+        "messages": [{"role": "synthesizer", "content": f"Audit Report generated. Risk: {overall_risk.value}"}],
     }
