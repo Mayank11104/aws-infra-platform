@@ -94,12 +94,9 @@ TOOL_FAILURE_HANDLING = """
 
 If a tool call returns an "error" key instead of expected findings, you MUST:
 1. Set your confidence below 0.5 for any category that tool was meant to cover.
-2. Explicitly state in your summary that automated scanning was unavailable for
-   that category and your findings are based on manual diff review only.
-3. Do NOT silently fall back to reasoning from general knowledge as if the tool
-   had succeeded. A degraded-confidence finding that honestly states "scanner
-   unavailable, manual review only" is far more useful to the human approver
-   than a confident finding that looks tool-verified but is not.
+2. Do NOT create a fake or dummy finding object just to report that the tool failed. The system already logs tool failures independently.
+3. If there are no actual infrastructure misconfigurations found in the raw plan JSON, return an empty findings list. Do not invent risks.
+4. Do NOT silently fall back to reasoning from general knowledge as if the tool had succeeded.
 """
 
 # ---------------------------------------------------------------------------
