@@ -11,42 +11,42 @@ The AI is a **reviewer, never a decision-maker**. It intercepts the CI/CD pipeli
 
 ## Architecture Overview
 
-```
-Developer Push (GitHub)
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    Jenkins CI/CD Pipeline                        │
-│                                                                  │
-│  1. Terraform Validate & Plan  ──► tfplan.json                  │
-│                                        │                         │
-│                              ┌─────────▼──────────┐             │
-│                              │  AI Sentinel Gate   │             │
-│                              │                     │             │
-│                              │  ┌──────────────┐  │             │
-│                              │  │ SecOps Agent │  │             │
-│                              │  │ FinOps Agent │  │  ◄ Neo4j   │
-│                              │  │ BlastRadius  │  │    Memory  │
-│                              │  │ Integrity    │  │             │
-│                              │  └──────┬───────┘  │             │
-│                              │         │           │             │
-│                              │  Synthesizer Node   │             │
-│                              │         │           │             │
-│                              │  Infrastructure     │             │
-│                              │  Audit Report PDF   │             │
-│                              └─────────┬───────────┘            │
-│                                        │                         │
-│                              📧 Email to Admin                   │
-│                                        │                         │
-│                         ┌──────────────▼──────────┐             │
-│                         │   Human Approval Gate    │             │
-│                         │   (Jenkins input step)   │             │
-│                         └──────────────┬────────────┘            │
-│                                        │                         │
-│  2. Terraform Apply    ◄───────────────┘                        │
-│  3. Ansible Configure (via WSL)                                  │
-│  4. Write state back to Neo4j Knowledge Graph                    │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    Dev[Developer Push GitHub] --> Jenkins{Jenkins CI/CD Pipeline}
+    
+    subgraph Jenkins [Jenkins CI/CD]
+        TF_Plan[1. Terraform Plan] --> |tfplan.json| Ingest
+        
+        subgraph AI_Gate [AI Sentinel Gate]
+            Ingest[Ingestion & Tiering] --> Sup[LangGraph Supervisor]
+            
+            Sup --> Sec[SecOps Agent]
+            Sup --> Fin[FinOps Agent]
+            Sup --> Blast[Blast Radius Agent]
+            Sup --> Int[Integrity Agent]
+            
+            Sec --> Synth[Synthesizer Node]
+            Fin --> Synth
+            Blast --> Synth
+            Int --> Synth
+            
+            Neo4j[(Neo4j Knowledge Graph)] -.-> |Query History| Sup
+            Synth -.-> |Save Run| Neo4j
+        end
+        
+        Synth --> |PDF| Email[Admin Email]
+        Email --> Gate[Manual Approval Gate]
+        
+        Gate --> |Approved| TF_Apply[2. Terraform Apply]
+        TF_Apply --> Ans[3. Ansible via WSL]
+    end
+    
+    style AI_Gate fill:#f0f4f8,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style Sup fill:#f9f,stroke:#333,stroke-width:2px
+    style Synth fill:#bbf,stroke:#333,stroke-width:2px
+    style Neo4j fill:#f96,stroke:#333,stroke-width:2px
+    style Gate fill:#ffcccc,stroke:#cc0000,stroke-width:2px
 ```
 
 ---
