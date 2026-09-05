@@ -161,8 +161,8 @@ pipeline {
                     bat 'wsl bash -c "cp $(wslpath \'%PRIV_KEY_FILE%\') ~/.ssh/id_rsa"'
                     bat 'wsl chmod 600 ~/.ssh/id_rsa'
                     
-                    // 3. Run ansible from Linux using the wrapper script
-                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ./run_ansible.sh"'
+                    // 3. Run ansible from Linux directly
+                    bat 'wsl bash -c "cd /tmp/aws-infra/ansible && ansible-playbook playbooks/install_services.yml -i inventory/aws_ec2.yml -l tag_Environment_dev"'
                     
                     // 4. (Phase 3) Write Ansible state back to Knowledge Graph
                     withCredentials([
